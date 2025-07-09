@@ -1,0 +1,30 @@
+name: Rust checks
+
+on:
+  push:
+    branches: [ master, next, dev-* ]
+  pull_request:
+    branches: [ master, next, dev-* ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust-checks:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@1.86
+      with:
+        components: clippy, rustfmt
+
+    - name: Run Clippy
+      run: cargo clippy -- -D warnings --allow unused_variables
+
+    - name: Cargo fmt check
+      run: cargo fmt --check --all
+
+    - name: Run tests
+      run: ./run-tests.sh

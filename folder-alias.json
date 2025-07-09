@@ -1,0 +1,8 @@
+{
+    "dstack/ra-tls": {
+        "description": "提供基于远程证明的tls通信"
+    },
+    "dstack/ra-rpc": {
+        "description": "基于远程证明的rpc框架"
+    }
+}
