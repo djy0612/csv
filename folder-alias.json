@@ -4,5 +4,44 @@
     },
     "dstack/ra-rpc": {
         "description": "基于远程证明的rpc框架"
+    },
+    "dstack/kms/src/main.rs": {
+        "description": "KMS Web主程序（RPC"
+    },
+    "dstack/kms/auth-eth/hardhat.config.ts": {
+        "description": "Hardhat 配置"
+    },
+    "dstack/kms/auth-eth/tsconfig.json": {
+        "description": "TypeScript 配置"
+    },
+    "dstack/kms/auth-eth/typechain-types": {
+        "description": "TypeChain 生成的类型"
+    },
+    "dstack/kms/auth-eth/test": {
+        "description": " 测试代码"
+    },
+    "dstack/kms/auth-eth/src/ethereum.ts": {
+        "description": "以太坊合约交互"
+    },
+    "dstack/kms/auth-eth/src/types.ts": {
+        "description": "类型定义"
+    },
+    "dstack/kms/auth-eth/src/server.ts": {
+        "description": "HTTP 服务器实现"
+    },
+    "dstack/kms/auth-eth/src/main.ts": {
+        "description": "启动入口"
+    },
+    "dstack/kms/auth-eth/contracts/IAppAuth.sol": {
+        "description": "APP启动验证接口"
+    },
+    "dstack/kms/auth-eth/contracts/IAppAuthBasicManagement.sol": {
+        "description": "基础管理接口"
+    },
+    "dstack/kms/auth-eth/contracts/AppAuth.sol": {
+        "description": "应用授权合约"
+    },
+    "dstack/kms/auth-eth/contracts/KmsAuth.sol": {
+        "description": "管理 KMS 实例和应用程序的启动授权"
     }
 }

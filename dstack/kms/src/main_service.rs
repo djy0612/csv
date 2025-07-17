@@ -34,11 +34,13 @@ use crate::{
 
 mod upgrade_authority;
 
+// 包装结构体,允许在多个线程之间安全地共享 KmsStateInner 的实例
 #[derive(Clone)]
 pub struct KmsState {
     inner: Arc<KmsStateInner>,
 }
 
+// 允许通过 KmsState 直接访问 KmsStateInner 的字段和方法
 impl std::ops::Deref for KmsState {
     type Target = KmsStateInner;
 
@@ -48,13 +50,14 @@ impl std::ops::Deref for KmsState {
 }
 
 pub struct KmsStateInner {
-    config: KmsConfig,
-    root_ca: CaCert,
-    k256_key: SigningKey,
-    temp_ca_cert: String,
-    temp_ca_key: String,
+    config: KmsConfig,//KMS 的配置信息
+    root_ca: CaCert,// 根 CA 证书
+    k256_key: SigningKey,// ECDSA 密钥
+    temp_ca_cert: String,// 临时 CA 证书
+    temp_ca_key: String,// 临时 CA 密钥
 }
 
+// 初始化 KmsState
 impl KmsState {
     pub fn new(config: KmsConfig) -> Result<Self> {
         let root_ca = CaCert::load(config.root_ca_cert(), config.root_ca_key())
@@ -79,25 +82,26 @@ impl KmsState {
 }
 
 pub struct RpcHandler {
-    state: KmsState,
-    attestation: Option<VerifiedAttestation>,
+    state: KmsState,//共享的 KMS 状态
+    attestation: Option<VerifiedAttestation>,//来自客户端的远程证明信息
 }
 
 struct BootConfig {
-    boot_info: BootInfo,
-    gateway_app_id: String,
-    os_image_hash: Vec<u8>,
+    boot_info: BootInfo,//启动信息
+    gateway_app_id: String,//网关应用 ID
+    os_image_hash: Vec<u8>,//操作系统镜像的哈希值
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 struct Mrs {
-    mrtd: String,
-    rtmr0: String,
+    mrtd: String,//测量根信任
+    rtmr0: String,//运行时测量寄存器
     rtmr1: String,
     rtmr2: String,
 }
 
 impl Mrs {
+    //比较两个 Mrs 实例是否相等，如果不相等则返回错误
     fn assert_eq(&self, other: &Self) -> Result<()> {
         let Self {
             mrtd,
@@ -121,6 +125,7 @@ impl Mrs {
     }
 }
 
+//从 BootInfo 实例创建 Mrs 实例，将测量值编码为十六进制字符串
 impl From<&BootInfo> for Mrs {
     fn from(report: &BootInfo) -> Self {
         Self {
@@ -133,34 +138,37 @@ impl From<&BootInfo> for Mrs {
 }
 
 impl RpcHandler {
+    // 确保 attestation 字段存在，如果不存在则返回错误
     fn ensure_attested(&self) -> Result<&VerifiedAttestation> {
         let Some(attestation) = &self.attestation else {
             bail!("No attestation provided");
         };
         Ok(attestation)
     }
-
+    // 确保 KMS 的启动配置是允许的
     async fn ensure_kms_allowed(&self, vm_config: &str) -> Result<BootInfo> {
         let att = self.ensure_attested()?;
+        // KMS 的验证
         self.ensure_app_attestation_allowed(att, true, false, vm_config)
             .await
             .map(|c| c.boot_info)
     }
-
+    // 确保应用程序的启动配置是允许的
     async fn ensure_app_boot_allowed(&self, vm_config: &str) -> Result<BootConfig> {
         let att = self.ensure_attested()?;
+        // 应用程序的验证
         self.ensure_app_attestation_allowed(att, false, false, vm_config)
             .await
     }
-
+    // 返回存储镜像文件的缓存目录
     fn image_cache_dir(&self) -> PathBuf {
         self.state.config.image.cache_dir.join("images")
     }
-
+    // 返回存储计算结果（如 MRs）的缓存目录
     fn mr_cache_dir(&self) -> PathBuf {
         self.state.config.image.cache_dir.join("computed")
     }
-
+    // 删除指定的缓存目录或文件
     fn remove_cache(&self, parent_dir: &PathBuf, sub_dir: &str) -> Result<()> {
         if sub_dir.is_empty() {
             return Ok(());
@@ -177,7 +185,7 @@ impl RpcHandler {
         }
         Ok(())
     }
-
+    // 验证提供的管理令牌是否有效
     fn ensure_admin(&self, token: &str) -> Result<()> {
         let token_hash = sha2::Sha256::new_with_prefix(token).finalize();
         if token_hash.as_slice() != self.state.config.admin_token_hash.as_slice() {
@@ -185,7 +193,7 @@ impl RpcHandler {
         }
         Ok(())
     }
-
+    // 从缓存中读取 MRs
     fn get_cached_mrs(&self, key: &str) -> Result<Mrs> {
         let path = self.mr_cache_dir().join(key);
         if !path.exists() {
@@ -196,7 +204,7 @@ impl RpcHandler {
             serde_json::from_str(&content).context("Failed to parse cached MRs")?;
         Ok(cached_mrs)
     }
-
+    // 将 MRs 缓存到文件中
     fn cache_mrs(&self, key: &str, mrs: &Mrs) -> Result<()> {
         let path = self.mr_cache_dir().join(key);
         fs::create_dir_all(path.parent().unwrap()).context("Failed to create cache directory")?;
@@ -207,7 +215,7 @@ impl RpcHandler {
         .context("Failed to write cached MRs")?;
         Ok(())
     }
-
+    // 验证操作系统镜像的哈希值是否与预期一致
     async fn verify_os_image_hash(&self, vm_config: &VmConfig, report: &BootInfo) -> Result<()> {
         if !self.state.config.image.verify {
             info!("Image verification is disabled");
@@ -279,7 +287,7 @@ impl RpcHandler {
             .context("MRs do not match")?;
         Ok(())
     }
-
+    // 下载并验证操作系统镜像
     async fn download_image(&self, hex_os_image_hash: &str, dst_dir: &Path) -> Result<()> {
         // Create a hex representation of the os_image_hash for URL and directory naming
         let url = self
@@ -404,6 +412,7 @@ impl RpcHandler {
         Ok(())
     }
 
+    // 确保应用程序的验证证明是允许的
     async fn ensure_app_attestation_allowed(
         &self,
         att: &VerifiedAttestation,
@@ -458,10 +467,13 @@ impl RpcHandler {
         })
     }
 
+    // 为应用程序派生 CA 证书
     fn derive_app_ca(&self, app_id: &[u8]) -> Result<CaCert> {
         let context_data = vec![app_id, b"app-ca"];
+        //使用 KDF 派生 ECDSA 密钥对
         let app_key = kdf::derive_ecdsa_key_pair(&self.state.root_ca.key, &context_data)
             .context("Failed to derive app disk key")?;
+        //构造证书请求
         let req = CertRequest::builder()
             .key(&app_key)
             .org_name("Dstack")
@@ -470,16 +482,19 @@ impl RpcHandler {
             .app_id(app_id)
             .special_usage("app:ca")
             .build();
+        //签名证书请求
         let app_ca = self
             .state
             .root_ca
             .sign(req)
             .context("Failed to sign App CA")?;
+        //返回生成的 CA 证书
         Ok(CaCert::from_parts(app_key, app_ca))
     }
 }
 
 impl KmsRpc for RpcHandler {
+    // 为应用程序生成和返回密钥
     async fn get_app_key(self, request: GetAppKeyRequest) -> Result<AppKeyResponse> {
         if request.api_version > 1 {
             bail!("Unsupported API version: {}", request.api_version);
@@ -496,6 +511,7 @@ impl KmsRpc for RpcHandler {
         let instance_id = boot_info.instance_id;
 
         let context_data = vec![&app_id[..], &instance_id[..], b"app-disk-crypt-key"];
+        // 使用 KDF 派生应用程序的磁盘加密密钥和环境加密密钥
         let app_disk_key = kdf::derive_dh_secret(&self.state.root_ca.key, &context_data)
             .context("Failed to derive app disk key")?;
         let env_crypt_key = {
@@ -523,7 +539,7 @@ impl KmsRpc for RpcHandler {
             os_image_hash,
         })
     }
-
+    // 为应用程序生成环境加密的公钥
     async fn get_app_env_encrypt_pub_key(self, request: AppId) -> Result<PublicKeyResponse> {
         let secret = kdf::derive_dh_secret(
             &self.state.root_ca.key,
@@ -547,7 +563,7 @@ impl KmsRpc for RpcHandler {
             signature,
         })
     }
-
+    // 返回 KMS 的元数据
     async fn get_meta(self) -> Result<GetMetaResponse> {
         let bootstrap_info = fs::read_to_string(self.state.config.bootstrap_info())
             .ok()
@@ -571,7 +587,7 @@ impl KmsRpc for RpcHandler {
             app_auth_implementation: info.app_auth_implementation,
         })
     }
-
+    // 返回 KMS 的密钥信息
     async fn get_kms_key(self, request: GetKmsKeyRequest) -> Result<KmsKeyResponse> {
         if self.state.config.onboard.quote_enabled {
             let _info = self.ensure_kms_allowed(&request.vm_config).await?;
@@ -584,7 +600,7 @@ impl KmsRpc for RpcHandler {
             }],
         })
     }
-
+    // 返回临时 CA 证书和密钥
     async fn get_temp_ca_cert(self) -> Result<GetTempCaCertResponse> {
         Ok(GetTempCaCertResponse {
             temp_ca_cert: self.state.inner.temp_ca_cert.clone(),
@@ -592,7 +608,7 @@ impl KmsRpc for RpcHandler {
             ca_cert: self.state.inner.root_ca.pem_cert.clone(),
         })
     }
-
+    // 为证书签名请求（CSR）签名
     async fn sign_cert(self, request: SignCertRequest) -> Result<SignCertResponse> {
         if request.api_version > 1 {
             bail!("Unsupported API version: {}", request.api_version);
@@ -622,6 +638,7 @@ impl KmsRpc for RpcHandler {
         })
     }
 
+    // 清除镜像缓存
     async fn clear_image_cache(self, request: ClearImageCacheRequest) -> Result<()> {
         self.ensure_admin(&request.token)?;
         self.remove_cache(&self.image_cache_dir(), &request.image_hash)

@@ -2,8 +2,9 @@ use load_config::load_config;
 use rocket::figment::Figment;
 use serde::Deserialize;
 use std::{path::PathBuf, time::Duration};
+// 定义默认配置文件的内容
 pub const DEFAULT_CONFIG: &str = include_str!("../kms.toml");
-
+// 加载配置文件并返回一个 Figment 实例
 pub fn load_config_figment(config_file: Option<&str>) -> Figment {
     load_config("kms", DEFAULT_CONFIG, config_file, false)
 }
@@ -18,6 +19,7 @@ const RPC_DOMAIN: &str = "rpc-domain";
 const K256_KEY: &str = "root-k256.key";
 const BOOTSTRAP_INFO: &str = "bootstrap-info.json";
 
+// 定义与镜像相关的配置
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct ImageConfig {
     pub verify: bool,
@@ -26,7 +28,7 @@ pub(crate) struct ImageConfig {
     #[serde(with = "serde_duration")]
     pub download_timeout: Duration,
 }
-
+// 定义 KMS 的主配置结构体
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct KmsConfig {
     pub cert_dir: PathBuf,
@@ -39,6 +41,7 @@ pub(crate) struct KmsConfig {
 }
 
 impl KmsConfig {
+    // 检查所有密钥文件是否存在
     pub fn keys_exists(&self) -> bool {
         self.tmp_ca_cert().exists()
             && self.tmp_ca_key().exists()
@@ -48,7 +51,7 @@ impl KmsConfig {
             && self.rpc_key().exists()
             && self.k256_key().exists()
     }
-
+    // 返回各种证书和密钥文件的路径
     pub fn tmp_ca_cert(&self) -> PathBuf {
         self.cert_dir.join(TEMP_CA_CERT)
     }
@@ -86,6 +89,7 @@ impl KmsConfig {
     }
 }
 
+// 定义身份验证 API 的配置
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type")]
 pub(crate) enum AuthApi {
@@ -96,21 +100,25 @@ pub(crate) enum AuthApi {
 }
 
 impl AuthApi {
+    // 检查是否是开发模式
     pub fn is_dev(&self) -> bool {
         matches!(self, AuthApi::Dev { .. })
     }
 }
 
+// 定义 Webhook 模式的配置
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct Webhook {
     pub url: String,
 }
 
+// 定义开发模式的配置
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct Dev {
     pub gateway_app_id: String,
 }
 
+// 定义引导配置
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct OnboardConfig {
     pub enabled: bool,

@@ -20,6 +20,7 @@ use safe_write::safe_write;
 
 use crate::config::KmsConfig;
 
+// 表示引导状态，包含 KMS 的配置信息
 #[derive(Clone)]
 pub struct OnboardState {
     config: KmsConfig,
@@ -31,6 +32,7 @@ impl OnboardState {
     }
 }
 
+// 处理引导相关的 RPC 请求
 pub struct OnboardHandler {
     state: OnboardState,
 }
@@ -46,6 +48,7 @@ impl RpcCall<OnboardState> for OnboardHandler {
 }
 
 impl OnboardRpc for OnboardHandler {
+    // 处理引导请求，生成密钥并返回响应
     async fn bootstrap(self, request: BootstrapRequest) -> Result<BootstrapResponse> {
         let quote_enabled = self.state.config.onboard.quote_enabled;
         let keys = Keys::generate(&request.domain, quote_enabled)
@@ -75,7 +78,7 @@ impl OnboardRpc for OnboardHandler {
         keys.store(cfg)?;
         Ok(response)
     }
-
+    // 处理引导请求，与远程 KMS 服务交互并存储密钥
     async fn onboard(self, request: OnboardRequest) -> Result<OnboardResponse> {
         let keys = Keys::onboard(
             &request.source_url,
@@ -89,7 +92,7 @@ impl OnboardRpc for OnboardHandler {
             .context("Failed to store keys")?;
         Ok(OnboardResponse {})
     }
-
+    // 处理结束请求
     async fn finish(self) -> anyhow::Result<()> {
         std::process::exit(0);
     }
@@ -107,6 +110,7 @@ struct Keys {
 }
 
 impl Keys {
+    // 生成密钥和证书
     async fn generate(domain: &str, quote_enabled: bool) -> Result<Self> {
         let tmp_ca_key = KeyPair::generate_for(&PKCS_ECDSA_P256_SHA256)?;
         let ca_key = KeyPair::generate_for(&PKCS_ECDSA_P256_SHA256)?;
@@ -114,7 +118,7 @@ impl Keys {
         let k256_key = SigningKey::random(&mut rand::rngs::OsRng);
         Self::from_keys(tmp_ca_key, ca_key, rpc_key, k256_key, domain, quote_enabled).await
     }
-
+    // 从给定的密钥生成证书
     async fn from_keys(
         tmp_ca_key: KeyPair,
         ca_key: KeyPair,
@@ -174,7 +178,7 @@ impl Keys {
             rpc_domain: domain.to_string(),
         })
     }
-
+    // 与远程 KMS 服务交互，获取密钥并生成本地密钥和证书
     async fn onboard(
         other_kms_url: &str,
         domain: &str,
@@ -222,14 +226,14 @@ impl Keys {
         )
         .await
     }
-
+    // 将生成的密钥和证书存储到配置文件中
     fn store(&self, cfg: &KmsConfig) -> Result<()> {
         self.store_keys(cfg)?;
         self.store_certs(cfg)?;
         safe_write(cfg.rpc_domain(), self.rpc_domain.as_bytes())?;
         Ok(())
     }
-
+    // 分别存储密钥和证书到指定的文件路径
     fn store_keys(&self, cfg: &KmsConfig) -> Result<()> {
         safe_write(cfg.tmp_ca_key(), self.tmp_ca_key.serialize_pem())?;
         safe_write(cfg.root_ca_key(), self.ca_key.serialize_pem())?;
@@ -245,7 +249,7 @@ impl Keys {
         Ok(())
     }
 }
-
+// 更新现有的密钥和证书
 pub(crate) async fn update_certs(cfg: &KmsConfig) -> Result<()> {
     // Read existing keys
     let tmp_ca_key = KeyPair::from_pem(&fs::read_to_string(cfg.tmp_ca_key())?)?;
@@ -280,7 +284,7 @@ pub(crate) async fn update_certs(cfg: &KmsConfig) -> Result<()> {
 
     Ok(())
 }
-
+// 生成引导密钥并存储
 pub(crate) async fn bootstrap_keys(cfg: &KmsConfig) -> Result<()> {
     let keys = Keys::generate(
         &cfg.onboard.auto_bootstrap_domain,
@@ -291,20 +295,20 @@ pub(crate) async fn bootstrap_keys(cfg: &KmsConfig) -> Result<()> {
     keys.store(cfg)?;
     Ok(())
 }
-
+// 创建 DstackGuestClient 实例
 fn dstack_client() -> DstackGuestClient<PrpcClient> {
     let address = dstack_types::dstack_agent_address();
     let http_client = PrpcClient::new(address);
     DstackGuestClient::new(http_client)
 }
-
+// 获取报价
 async fn app_quote(report_data: Vec<u8>) -> Result<GetQuoteResponse> {
     let quote = dstack_client()
         .get_quote(RawQuoteArgs { report_data })
         .await?;
     Ok(quote)
 }
-
+// 生成报价和事件日志
 async fn quote_keys(p256_pubkey: &[u8], k256_pubkey: &[u8]) -> Result<(Vec<u8>, Vec<u8>)> {
     let p256_hex = hex::encode(p256_pubkey);
     let k256_hex = hex::encode(k256_pubkey);
@@ -314,21 +318,21 @@ async fn quote_keys(p256_pubkey: &[u8], k256_pubkey: &[u8]) -> Result<(Vec<u8>, 
     let res = app_quote(report_data).await?;
     Ok((res.quote, res.event_log.into()))
 }
-
+// 计算 Keccak-256 哈希值
 fn keccak256(msg: &[u8]) -> [u8; 32] {
     use sha3::{Digest, Keccak256};
     let mut hasher = Keccak256::new();
     hasher.update(msg);
     hasher.finalize().into()
 }
-
+// 将哈希值填充到 64 字节
 fn pad64(hash: [u8; 32]) -> Vec<u8> {
     let mut padded = Vec::with_capacity(64);
     padded.extend_from_slice(&hash);
     padded.resize(64, 0);
     padded
 }
-
+// 生成 RA 证书
 async fn gen_ra_cert(ca_cert_pem: String, ca_key_pem: String) -> Result<(String, String)> {
     use ra_tls::cert::CertRequest;
     use ra_tls::rcgen::{KeyPair, PKCS_ECDSA_P256_SHA256};

@@ -5560,7 +5560,7 @@ dependencies = [
 [[package]]
 name = "s2n-quic-h3"
 version = "0.1.0"
-source = "git+https://github.com/SergioBenitez/s2n-quic-h3.git?rev=6613956#66139567216fd59c44c58ca792711f755fdfaa2b"
+source = "git+https://github.com/SergioBenitez/s2n-quic-h3.git?rev=f832471#f83247128132c968d57a99fa5e76ac7f1528ea10"
 dependencies = [
  "bytes",
  "futures",

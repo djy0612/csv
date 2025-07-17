@@ -115,6 +115,7 @@ class UnixSocketHTTPConnection(http.client.HTTPConnection):
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         if self.timeout:
             sock.settimeout(self.timeout)
+        print(f"Connecting to socket at: {self.socket_path}")
         sock.connect(self.socket_path)
         self.sock = sock
 
@@ -766,7 +767,7 @@ def save_whitelist(whitelist: List[str]) -> None:
 def main():
     parser = argparse.ArgumentParser(description='dstack-vmm CLI - Manage VMs')
     parser.add_argument(
-        '--url', default='http://localhost:8080', help='dstack-vmm API URL')
+        '--url', default='http://localhost:10330', help='dstack-vmm API URL')
 
     subparsers = parser.add_subparsers(dest='command', help='Commands')
 
@@ -812,7 +813,7 @@ def main():
     compose_parser.add_argument(
         '--local-key-provider', action='store_true', help='Enable local key provider')
     compose_parser.add_argument(
-        '--key-provider-id', default=None, help='Key provider ID if you want to bind to a specific key provider')
+        '--key-provider-id', default="", help='Key provider ID if you want to bind to a specific key provider')
     compose_parser.add_argument(
         '--public-logs', action='store_true', help='Enable public logs')
     compose_parser.add_argument(

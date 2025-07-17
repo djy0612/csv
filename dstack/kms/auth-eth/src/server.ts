@@ -45,7 +45,7 @@ export async function build(): Promise<FastifyInstance> {
   const kmsContractAddr = process.env.KMS_CONTRACT_ADDR || '0x0000000000000000000000000000000000000000';
   const provider = new ethers.JsonRpcProvider(rpcUrl);
   server.decorate('ethereum', new EthereumBackend(provider, kmsContractAddr));
-
+  // 检查服务状态
   server.get('/', async (request, reply) => {
     const batch = await Promise.all([
       server.ethereum.getGatewayAppId(),
@@ -61,7 +61,7 @@ export async function build(): Promise<FastifyInstance> {
     };
   });
 
-  // Define routes
+  // 验证应用程序是否被授权启动
   server.post<{
     Body: BootInfo;
     Reply: BootResponse;
@@ -84,7 +84,7 @@ export async function build(): Promise<FastifyInstance> {
       });
     }
   });
-
+  // 验证 KMS 实例是否被授权启动
   server.post<{
     Body: BootInfo;
     Reply: BootResponse;

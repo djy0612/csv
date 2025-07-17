@@ -17,10 +17,10 @@ contract KmsAuth is
 {
     // Struct for KMS information
     struct KmsInfo {
-        bytes k256Pubkey;
-        bytes caPubkey;
-        bytes quote;
-        bytes eventlog;
+        bytes k256Pubkey;// K256 公钥
+        bytes caPubkey;// CA 公钥
+        bytes quote;// 硬件证明报告
+        bytes eventlog;// 事件日志
     }
 
     // KMS information
@@ -32,24 +32,24 @@ contract KmsAuth is
 
     // Struct to store App configuration
     struct AppConfig {
-        bool isRegistered;
-        address controller;
+        bool isRegistered;// 是否已注册
+        address controller;// 控制器地址（AppAuth 合约地址）
     }
 
     // Mapping of registered apps
-    mapping(address => AppConfig) public apps;
+    mapping(address => AppConfig) public apps;// 注册的应用
 
     // Mapping of allowed aggregated MR measurements for running KMS
-    mapping(bytes32 => bool) public kmsAllowedAggregatedMrs;
+    mapping(bytes32 => bool) public kmsAllowedAggregatedMrs;// 允许的 KMS 聚合度量
 
     // Mapping of allowed KMS device IDs
-    mapping(bytes32 => bool) public kmsAllowedDeviceIds;
+    mapping(bytes32 => bool) public kmsAllowedDeviceIds;// 允许的 KMS 设备 ID
 
     // Mapping of allowed image measurements
-    mapping(bytes32 => bool) public allowedOsImages;
+    mapping(bytes32 => bool) public allowedOsImages;// 允许的 OS 镜像
 
     // Sequence number for app IDs - per user
-    mapping(address => uint256) public nextAppSequence;
+    mapping(address => uint256) public nextAppSequence;// 用户的下一个应用序列号
 
     // AppAuth implementation contract address for factory deployment
     address public appAuthImplementation;
@@ -130,7 +130,7 @@ contract KmsAuth is
         emit GatewayAppIdSet(appId);
     }
 
-    // View next app id
+    // View next app id 预测下一个应用 ID
     function nextAppId() public view returns (address appId) {
         bytes32 fullHash = keccak256(
             abi.encodePacked(

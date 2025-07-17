@@ -100,15 +100,21 @@ if [ -t 0 ]; then
   fi
 fi
 
+#$CLI compose \
+#  --docker-compose "$COMPOSE_TMP" \
+#  --name kms \
+#  --local-key-provider \
+#  --public-logs \
+#  --public-sysinfo \
+#  --no-instance-id \
+#  --output .app-compose.json
 $CLI compose \
   --docker-compose "$COMPOSE_TMP" \
   --name kms \
-  --local-key-provider \
   --public-logs \
   --public-sysinfo \
   --no-instance-id \
   --output .app-compose.json
-
 # Remove the temporary file as it is no longer needed
 rm "$COMPOSE_TMP"
 

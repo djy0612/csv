@@ -42,12 +42,12 @@ contract AppAuth is
 
     // Initialize the contract
     function initialize(
-        address initialOwner,
-        address _appId,
-        bool _disableUpgrades,
-        bool _allowAnyDevice,
-        bytes32 initialDeviceId,
-        bytes32 initialComposeHash
+        address initialOwner,// 初始所有者
+        address _appId,// 应用 ID
+        bool _disableUpgrades,// 是否禁用升级
+        bool _allowAnyDevice,// 是否允许任意设备
+        bytes32 initialDeviceId,// 初始设备 ID
+        bytes32 initialComposeHash// 初始组合哈希
     ) public initializer {
         require(initialOwner != address(0), "invalid owner address");
         require(_appId != address(0), "invalid app ID");
@@ -93,6 +93,7 @@ contract AppAuth is
     }
 
     // Function to authorize upgrades (required by UUPSUpgradeable)
+    // 授权升级（仅所有者且未禁用升级）
     function _authorizeUpgrade(address) internal view override onlyOwner {
         require(!_upgradesDisabled, "Upgrades are permanently disabled");
     }
@@ -132,16 +133,19 @@ contract AppAuth is
         IAppAuth.AppBootInfo calldata bootInfo
     ) external view override returns (bool isAllowed, string memory reason) {
         // Check if this controller is responsible for the app
+        // 检查应用 ID 是否匹配
         if (bootInfo.appId != appId) {
             return (false, "Wrong app controller");
         }
 
         // Check if compose hash is allowed
+        // 检查组合哈希是否被允许
         if (!allowedComposeHashes[bootInfo.composeHash]) {
             return (false, "Compose hash not allowed");
         }
 
         // Check if device is allowed (when device restriction is enabled)
+        // 检查设备是否被允许（当设备限制启用时）
         if (!allowAnyDevice && !allowedDeviceIds[bootInfo.deviceId]) {
             return (false, "Device not allowed");
         }
@@ -150,6 +154,7 @@ contract AppAuth is
     }
 
     // Function to permanently disable upgrades
+    // 永久禁用升级
     function disableUpgrades() external onlyOwner {
         _upgradesDisabled = true;
         emit UpgradesDisabled();

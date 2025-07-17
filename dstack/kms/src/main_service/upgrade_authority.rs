@@ -3,6 +3,7 @@ use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
 use serde_human_bytes as hex_bytes;
 
+// 表示启动信息，包含与启动相关的各种测量值和日志
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct BootInfo {
@@ -37,6 +38,7 @@ pub(crate) struct BootInfo {
     pub advisory_ids: Vec<String>,
 }
 
+// 表示启动授权的响应
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct BootResponse {
@@ -45,16 +47,18 @@ pub(crate) struct BootResponse {
     pub reason: String,
 }
 
+// 表示身份验证 API 的信息响应
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AuthApiInfoResponse {
     pub status: String,
-    pub kms_contract_addr: String,
+    pub kms_contract_addr: String,//KMS 合约地址
     pub gateway_app_id: String,
-    pub chain_id: u64,
+    pub chain_id: u64,//链 ID
     pub app_auth_implementation: String,
 }
 
+// 表示获取身份验证信息的响应
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct GetInfoResponse {
@@ -66,6 +70,7 @@ pub(crate) struct GetInfoResponse {
 }
 
 impl AuthApi {
+    // 检查应用程序是否被允许启动
     pub async fn is_app_allowed(&self, boot_info: &BootInfo, is_kms: bool) -> Result<BootResponse> {
         match self {
             AuthApi::Dev { dev } => Ok(BootResponse {
@@ -90,6 +95,7 @@ impl AuthApi {
         }
     }
 
+    // 获取身份验证 API 的信息
     pub async fn get_info(&self) -> Result<GetInfoResponse> {
         match self {
             AuthApi::Dev { dev } => Ok(GetInfoResponse {
@@ -115,7 +121,7 @@ impl AuthApi {
         }
     }
 }
-
+// 将 URL 和路径拼接成完整的 URL
 fn url_join(url: &str, path: &str) -> String {
     let mut url = url.to_string();
     if !url.ends_with('/') {
