@@ -24,13 +24,13 @@ subject_postfix = ".dstack"
 admin_token_hash = ""
 
 [core.image]
-verify = true
+verify = false
 cache_dir = "/usr/share/dstack/images"
 download_url = "http://localhost:8000/{OS_IMAGE_HASH}.tar.gz"
 download_timeout = "2m"
 
 [core.auth_api]
-type = "webhook"
+type = "dev"
 
 [core.auth_api.webhook]
 url = "http://auth-api:8000"
@@ -41,6 +41,6 @@ gateway_app_id = "any"
 [core.onboard]
 enabled = true
 auto_bootstrap_domain = ""
-quote_enabled = true
+quote_enabled = false
 address = "0.0.0.0"
 port = 8000

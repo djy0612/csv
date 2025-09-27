@@ -127,6 +127,7 @@ $CLI deploy \
   --port tcp:$KMS_RPC_ADDR:8000 \
   --port tcp:$AUTH_API_RPC_ADDR:8001 \
   --port tcp:$GUEST_AGENT_ADDR:8090 \
+  --port tcp:0.0.0.0:2222:22 \
   --vcpu 8 \
   --memory 8G \
   --disk 50G

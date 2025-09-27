@@ -20,7 +20,7 @@ pub type TdxReportData = [u8; 64];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TdxReport(pub [u8; 1024]);
-
+//封装了底层 extend_rtmr 和 log_rtmr_event 函数,向 RTMR 寄存器 3 中“扩展”一个事件的操作
 pub fn extend_rtmr3(event: &str, payload: &[u8]) -> anyhow::Result<()> {
     use anyhow::Context;
     // This code is not defined in the TCG specification.

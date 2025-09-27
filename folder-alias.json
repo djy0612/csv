@@ -43,5 +43,71 @@
     },
     "dstack/kms/auth-eth/contracts/KmsAuth.sol": {
         "description": "管理 KMS 实例和应用程序的启动授权"
+    },
+    "dstack/cc-eventlog": {
+        "description": "解析和处理 TDX相关的事件日志"
+    },
+    "dstack/cert-client": {
+        "description": "处理证书请求和签名的客户端库"
+    },
+    "dstack/certbot": {
+        "description": "自动申请和管理 Let's Encrypt SSL/TLS 证书"
+    },
+    "dstack/ct_monitor": {
+        "description": "监控指定域名的 SSL/TLS 证书颁发情况"
+    },
+    "dstack/dstack-util": {
+        "description": "负责机密虚拟机的系统初始化和配置管理"
+    },
+    "dstack/gateway": {
+        "description": "核心网关服务"
+    },
+    "dstack/supervisor": {
+        "description": "进程管理和监控系统"
+    },
+    "dstack/tdx-attest": {
+        "description": "远程证明库"
+    },
+    "dstack/tdx-attest-sys": {
+        "description": "远程证明 C 语言接口封装"
+    },
+    "dstack/rocket-vsock-listener": {
+        "description": "VSOCK 协议通信"
+    },
+    "dstack/mod-tdx-guest": {
+        "description": "Linux 内核模块为应用提供用户空间接口，用于访问 TDX 硬件功能"
+    },
+    "dstack/vmm": {
+        "description": "虚拟机管理器"
+    },
+    "dstack/vmm/src/app/id_pool.rs": {
+        "description": "id池"
+    },
+    "dstack/vmm/src/app/image.rs": {
+        "description": "加载和验证虚拟机镜像"
+    },
+    "dstack/vmm/src/app/qemu.rs": {
+        "description": "管理 QEMU 虚拟机"
+    },
+    "dstack/vmm/src/config.rs": {
+        "description": "配置模块，负责管理各种组件的配置参数"
+    },
+    "dstack/vmm/src/guest_api_service.rs": {
+        "description": "虚拟机客户端 API 服务处理器"
+    },
+    "dstack/vmm/src/host_api_service.rs": {
+        "description": "主机 API 服务处理器"
+    },
+    "dstack/vmm/src/main_routes.rs": {
+        "description": "Web 路由模块，为 VMM 系统提供 HTTP 接口"
+    },
+    "dstack/vmm/src/app.rs": {
+        "description": "核心应用状态管理模块"
+    },
+    "dstack/vmm/src/main_service.rs": {
+        "description": "VMM 主服务的 gRPC 处理器，实现了虚拟机管理的核心 RPC 接口"
+    },
+    "dstack/vmm/src/main.rs": {
+        "description": "VMM 系统的主入口文件"
     }
 }

@@ -12,7 +12,7 @@ compose_file = "app-compose.json"
 sys_config_file = "sys-config.json"
 
 [default.core.simulator]
-enabled = true
+enabled = false
 quote_file = "quote.hex"
 event_log_file = "eventlog.json"
 

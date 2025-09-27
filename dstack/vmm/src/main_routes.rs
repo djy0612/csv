@@ -22,12 +22,12 @@ macro_rules! file_or_include_str {
             .unwrap_or_else(|| include_str!($path).to_string())
     };
 }
-
+// 主页面
 #[get("/")]
 async fn index() -> (ContentType, String) {
     (ContentType::HTML, file_or_include_str!("console.html"))
 }
-
+// 静态资源
 #[get("/res/<path>")]
 async fn res(path: &str) -> Result<(ContentType, String), Custom<String>> {
     match path {
@@ -69,16 +69,16 @@ impl Drop for StreamCounter {
         );
     }
 }
-
+// 虚拟机日志流接口
 #[get("/logs?<id>&<follow>&<ansi>&<lines>&<ch>")]
 fn vm_logs(
-    _auth: Authorized,
-    app: &State<App>,
-    id: String,
-    follow: bool,
-    ansi: bool,
-    lines: Option<usize>,
-    ch: Option<&str>,
+    _auth: Authorized,      // API 令牌认证
+    app: &State<App>,       // VMM 应用状态
+    id: String,             // 虚拟机 ID
+    follow: bool,           // 是否跟踪日志
+    ansi: bool,             // 是否保留 ANSI 颜色
+    lines: Option<usize>,   // 显示行数
+    ch: Option<&str>,       // 日志通道
 ) -> TextStream![String] {
     let workdir = app.work_dir(&id);
     let ch = ch.unwrap_or("serial").to_string();

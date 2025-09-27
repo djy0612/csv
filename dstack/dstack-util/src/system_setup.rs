@@ -299,7 +299,9 @@ impl<'a> Stage0<'a> {
                 .await
                 .context("Failed to get temp ca cert")?
         };
+        info!("generate_ra_cert");
         let cert_pair = generate_ra_cert(tmp_ca.temp_ca_cert, tmp_ca.temp_ca_key)?;
+        info!("RaClientConfig");
         let ra_client = RaClientConfig::builder()
             .tls_no_check(false)
             .tls_built_in_root_certs(false)
@@ -330,7 +332,9 @@ impl<'a> Stage0<'a> {
             .build()
             .into_client()
             .context("Failed to create client")?;
+        info!("dstack_kms_rpc");
         let kms_client = dstack_kms_rpc::kms_client::KmsClient::new(ra_client);
+        info!("get_app_key");
         let response = kms_client
             .get_app_key(rpc::GetAppKeyRequest {
                 api_version: 1,
@@ -338,9 +342,9 @@ impl<'a> Stage0<'a> {
             })
             .await
             .context("Failed to get app key")?;
-
-        extend_rtmr3("os-image-hash", &response.os_image_hash)
-            .context("Failed to extend os-image-hash to RTMR3")?;
+        //info!("extend_rtmr3");    
+        //extend_rtmr3("os-image-hash", &response.os_image_hash)
+        //    .context("Failed to extend os-image-hash to RTMR3")?;
 
         let (_, ca_pem) = x509_parser::pem::parse_x509_pem(tmp_ca.ca_cert.as_bytes())
             .context("Failed to parse ca cert")?;

@@ -24,7 +24,7 @@ mod guest_api_service;
 mod host_api_service;
 mod main_routes;
 mod main_service;
-
+// 版本信息管理
 const CARGO_PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 const GIT_REV: &str = git_version::git_version!(
     args = ["--abbrev=20", "--always", "--dirty=-modified"],
@@ -35,7 +35,7 @@ const GIT_REV: &str = git_version::git_version!(
 fn app_version() -> String {
     format!("v{CARGO_PKG_VERSION} ({GIT_REV})")
 }
-
+// 命令行参数处理
 #[derive(Parser)]
 #[command(author, version, about, long_version = app_version())]
 struct Args {
@@ -43,18 +43,18 @@ struct Args {
     #[arg(short, long)]
     config: Option<String>,
 }
-
+// 外部 API 服务器
 async fn run_external_api(app: App, figment: Figment, api_auth: ApiToken) -> Result<()> {
     let external_api = rocket::custom(figment)
-        .mount("/", main_routes::routes())
-        .mount("/guest", ra_rpc::prpc_routes!(App, GuestApiHandler))
-        .mount("/api", ra_rpc::prpc_routes!(App, HostApiHandler))
+        .mount("/", main_routes::routes())                              // Web 控制台和日志
+        .mount("/guest", ra_rpc::prpc_routes!(App, GuestApiHandler))    // Guest Agent 代理
+        .mount("/api", ra_rpc::prpc_routes!(App, HostApiHandler))       // 主机 API
         .mount(
             "/prpc",
-            ra_rpc::prpc_routes!(App, RpcHandler, trim: "Teepod."),
+            ra_rpc::prpc_routes!(App, RpcHandler, trim: "Teepod."),     // 主要 VMM API
         )
-        .manage(app)
-        .manage(api_auth)
+        .manage(app)                                                    // 注入应用状态
+        .manage(api_auth)                                               // 注入 API 认证
         .attach(AdHoc::on_response("Add app rev header", |_req, res| {
             Box::pin(async move {
                 res.set_raw_header("X-App-Version", app_version());
@@ -72,11 +72,12 @@ async fn run_external_api(app: App, figment: Figment, api_auth: ApiToken) -> Res
         .map_err(|err| anyhow!(err.to_string()))?;
     Ok(())
 }
-
+// 主机 API 服务器
 async fn run_host_api(app: App, figment: Figment) -> Result<()> {
     let figment = figment
         .clone()
         .merge(Serialized::defaults(figment.find_value("host_api")?));
+    // 虚拟机内部专用的 API 服务
     let rocket = rocket::custom(figment)
         .mount("/api", ra_rpc::prpc_routes!(App, HostApiHandler))
         .manage(app);
@@ -84,7 +85,9 @@ async fn run_host_api(app: App, figment: Figment) -> Result<()> {
         .ignite()
         .await
         .map_err(|err| anyhow!("Failed to ignite rocket: {err}"))?;
+    // 智能监听选择
     if DefaultListener::bind_endpoint(&ignite).is_ok() {
+        // TCP 监听（开发/测试环境）
         let listener = DefaultListener::bind(&ignite)
             .await
             .map_err(|err| anyhow!("Failed to bind host API : {err}"))?;
@@ -93,6 +96,7 @@ async fn run_host_api(app: App, figment: Figment) -> Result<()> {
             .await
             .map_err(|err| anyhow!(err.to_string()))?;
     } else {
+        // VSock 监听（生产环境）
         let listener = VsockListener::bind_rocket(&ignite)
             .map_err(|err| anyhow!("Failed to bind host API : {err}"))?;
         ignite
@@ -121,16 +125,19 @@ async fn auto_restart_task(app: App) {
 
 #[rocket::main]
 async fn main() -> Result<()> {
-    {
+    {   // 1. 日志系统初始化
         use tracing_subscriber::{fmt, EnvFilter};
         let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
         fmt().with_env_filter(filter).init();
     }
-
+    // 2. 命令行参数解析
     let args = Args::parse();
+    // 3. 配置加载
     let figment = config::load_config_figment(args.config.as_deref());
     let config = Config::extract_or_default(&figment)?.abs_path()?;
+    // 4. API 认证设置
     let api_auth = ApiToken::new(config.auth.tokens.clone(), config.auth.enabled);
+    // 5. Supervisor 连接
     let supervisor = {
         let cfg = &config.supervisor;
         let abs_exe = Path::new(&cfg.exe).absolutize()?;
@@ -145,10 +152,13 @@ async fn main() -> Result<()> {
         .await
         .context("Failed to connect to supervisor")?
     };
+    // 6. 创建应用状态
     let state = app::App::new(config, supervisor);
+    // 7. 重载已存在的虚拟机
     state.reload_vms().await.context("Failed to reload VMs")?;
+    // 8. 启动自动重启任务
     tokio::spawn(auto_restart_task(state.clone()));
-
+    // 并发启动两个服务器
     tokio::select! {
         result = run_external_api(state.clone(), figment.clone(), api_auth) => {
             result.context("Failed to run external API")?;

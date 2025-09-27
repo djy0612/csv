@@ -48,7 +48,7 @@ pub enum TdxAttestError {
     #[error("unknown error ({0})")]
     UnknownError(u32),
 }
-
+//用于获取 TDX Quote
 pub fn get_quote(
     report_data: &TdxReportData,
     att_key_id_list: Option<&[TdxUuid]>,
@@ -81,10 +81,10 @@ pub fn get_quote(
     unsafe {
         tdx_att_free_quote(quote_ptr);
     }
-
+    //返回包含密钥 ID 和 Quote 数据的元组
     Ok((att_key_id, quote))
 }
-
+//用于获取 TDX Report（报告)
 pub fn get_report(report_data: &TdxReportData) -> Result<TdxReport> {
     let mut report = TdxReport([0; TDX_REPORT_SIZE as usize]);
 
@@ -101,7 +101,7 @@ pub fn get_report(report_data: &TdxReportData) -> Result<TdxReport> {
 
     Ok(report)
 }
-
+//用于将一个 TDX 事件日志记录到本地文件系统中
 pub fn log_rtmr_event(log: &TdxEventLog) -> anyhow::Result<()> {
     // Append to event log
     let logline = serde_json::to_string(&log).context("Failed to serialize event log")?;
@@ -125,7 +125,7 @@ pub fn log_rtmr_event(log: &TdxEventLog) -> anyhow::Result<()> {
         .context("Failed to write to event log file")?;
     Ok(())
 }
-
+//用于扩展 RTMR,通常是将寄存器当前值与新事件的哈希值一起再进行一次哈希，然后更新寄存器。
 pub fn extend_rtmr(index: u32, event_type: u32, digest: [u8; 48]) -> Result<()> {
     let event = tdx_rtmr_event_t {
         version: 1,
@@ -141,7 +141,7 @@ pub fn extend_rtmr(index: u32, event_type: u32, digest: [u8; 48]) -> Result<()> 
     }
     Ok(())
 }
-
+//查询 TDX 模块当前支持的所有证明密钥（Attestation Key）的 ID 列表
 pub fn get_supported_att_key_ids() -> Result<Vec<TdxUuid>> {
     let mut list_size = 0;
     let error = unsafe { tdx_att_get_supported_att_key_ids(ptr::null_mut(), &mut list_size) };

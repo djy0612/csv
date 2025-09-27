@@ -1,13 +1,13 @@
 services:
   auth-api:
     build:
-      context: .
+      context: ../../..
       dockerfile_inline: |
         FROM node:18-alpine@sha256:06f7bbbcec00dd10c21a3a0962609600159601b5004d84aff142977b449168e9
         WORKDIR /app
 
         RUN apk add --no-cache git
-        RUN git clone https://ghfast.top/github.com/Dstack-TEE/dstack.git && \
+        RUN git clone https://ghfast.top/github.com/djy0612/dstack.git && \
             cd dstack && \
             git checkout ${GIT_REV}
         WORKDIR /app/dstack/kms/auth-eth
@@ -26,7 +26,7 @@ services:
 
   kms:
     build:
-      context: .
+      context: ../../..
       dockerfile_inline: |
         FROM golang:1.22-alpine@sha256:1699c10032ca2582ec89a24a1312d986a3f094aed3d5c1147b19880afe40e052 AS dstack-mr-builder
         WORKDIR /app
@@ -58,7 +58,7 @@ services:
         ENV CARGO_REGISTRIES_CRATES_IO_INDEX=https://mirrors.ustc.edu.cn/crates.io-index
         ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 
-        RUN git clone https://ghfast.top/github.com/Dstack-TEE/dstack.git && \
+        RUN git clone https://ghfast.top/github.com/djy0612/dstack.git && \
             cd dstack && \
             git checkout ${GIT_REV}
         WORKDIR /app/dstack

@@ -1,0 +1,26 @@
+{
+    "manifest_version": 2,
+    "name": "dstack-gateway",
+    "runner": "docker-compose",
+    "docker_compose_file": "services:\n  gateway:\n    build:\n      context: .\n      dockerfile_inline: |\n        FROM rust:1.86.0@sha256:300ec56abce8cc9448ddea2172747d048ed902a3090e6b57babb2bf19f754081\n        WORKDIR /src\n        RUN apt-get update && apt-get install -y \\\n            git build-essential libssl-dev protobuf-compiler \\\n            libprotobuf-dev wireguard-tools iproute2 libclang-dev jq\n        RUN git clone https://ghfast.top/github.com/djy0612/dstack.git && \\\n            cd dstack && \\\n            git checkout \n        WORKDIR /src/dstack/gateway/dstack-app\n        RUN cargo build --release -p dstack-gateway\n        ENTRYPOINT [\"/src/dstack/gateway/dstack-app/entrypoint.sh\"]\n        CMD [\"/src/dstack/target/release/dstack-gateway\", \"-c\", \"/data/gateway/gateway.toml\"]\n    volumes:\n      - /var/run/dstack.sock:/var/run/dstack.sock\n      - /dstack:/dstack\n      - data:/data\n    network_mode: host\n    privileged: true\n    environment:\n      - WG_ENDPOINT=${WG_ENDPOINT}\n      - SRV_DOMAIN=${SRV_DOMAIN}\n      - CF_API_TOKEN=${CF_API_TOKEN}\n      - CF_ZONE_ID=${CF_ZONE_ID}\n      - MY_URL=${MY_URL}\n      - BOOTNODE_URL=${BOOTNODE_URL}\n      - ACME_STAGING=yes\n      - SUBNET_INDEX=${SUBNET_INDEX}\n      - RUST_LOG=info,certbot=debug\n      - PCCS_URL=${PCCS_URL}\n      - RPC_DOMAIN=${RPC_DOMAIN}\n    restart: always\n\nvolumes:\n  data:\n",
+    "kms_enabled": true,
+    "gateway_enabled": false,
+    "local_key_provider_enabled": false,
+    "key_provider_id": "",
+    "public_logs": true,
+    "public_sysinfo": true,
+    "allowed_envs": [
+        "CF_API_TOKEN",
+        "CF_ZONE_ID",
+        "SRV_DOMAIN",
+        "WG_ENDPOINT",
+        "MY_URL",
+        "BOOTNODE_URL",
+        "SUBNET_INDEX",
+        "APP_LAUNCH_TOKEN",
+        "RPC_DOMAIN"
+    ],
+    "no_instance_id": true,
+    "secure_time": true,
+    "pre_launch_script": "EXPECTED_TOKEN_HASH=$(jq -j .launch_token_hash app-compose.json)\nif [ \"$EXPECTED_TOKEN_HASH\" == \"null\" ]; then\n    echo \"Skipped APP_LAUNCH_TOKEN check\"\nelse\n  ACTUAL_TOKEN_HASH=$(echo -n \"$APP_LAUNCH_TOKEN\" | sha256sum | cut -d' ' -f1)\n  if [ \"$EXPECTED_TOKEN_HASH\" != \"$ACTUAL_TOKEN_HASH\" ]; then\n      echo \"Error: Incorrect APP_LAUNCH_TOKEN, please make sure set the correct APP_LAUNCH_TOKEN in env\"\n      reboot\n      exit 1\n  else\n      echo \"APP_LAUNCH_TOKEN checked OK\"\n  fi\nfi\n"
+}

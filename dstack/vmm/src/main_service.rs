@@ -25,17 +25,17 @@ fn hex_sha256(data: &str) -> String {
 }
 
 pub struct RpcHandler {
-    app: App,
+    app: App,                   // VMM 应用实例
 }
 
 impl Deref for RpcHandler {
     type Target = App;
 
     fn deref(&self) -> &Self::Target {
-        &self.app
+        &self.app               // 自动解引用到 App，可直接调用 App 的方法
     }
 }
-
+// 应用 ID 生成
 fn app_id_of(compose_file: &str) -> String {
     fn truncate40(s: &str) -> &str {
         if s.len() > 40 {
@@ -120,6 +120,7 @@ impl RpcHandler {
 }
 
 impl VmmRpc for RpcHandler {
+    // 创建虚拟机
     async fn create_vm(self, request: VmConfiguration) -> Result<Id> {
         validate_label(&request.name)?;
 
@@ -207,7 +208,7 @@ impl VmmRpc for RpcHandler {
 
         Ok(Id { id })
     }
-
+    // 启动虚拟机
     async fn start_vm(self, request: Id) -> Result<()> {
         self.app
             .start_vm(&request.id)
@@ -215,7 +216,7 @@ impl VmmRpc for RpcHandler {
             .context("Failed to start VM")?;
         Ok(())
     }
-
+    // 停止虚拟机
     async fn stop_vm(self, request: Id) -> Result<()> {
         self.app
             .stop_vm(&request.id)
@@ -223,7 +224,7 @@ impl VmmRpc for RpcHandler {
             .context("Failed to stop VM")?;
         Ok(())
     }
-
+    // 删除虚拟机
     async fn remove_vm(self, request: Id) -> Result<()> {
         self.app
             .remove_vm(&request.id)
@@ -231,11 +232,11 @@ impl VmmRpc for RpcHandler {
             .context("Failed to remove VM")?;
         Ok(())
     }
-
+    // 状态查询
     async fn status(self, request: StatusRequest) -> Result<StatusResponse> {
         self.app.list_vms(request).await
     }
-
+    // 系统资源查询
     async fn list_images(self) -> Result<ImageListResponse> {
         Ok(ImageListResponse {
             images: self
@@ -251,7 +252,7 @@ impl VmmRpc for RpcHandler {
                 .collect(),
         })
     }
-
+    // 应用升级
     async fn upgrade_app(self, request: UpgradeAppRequest) -> Result<Id> {
         let new_id = if !request.compose_file.is_empty() {
             // check the compose file is valid
@@ -334,7 +335,7 @@ impl VmmRpc for RpcHandler {
             })
         }
     }
-
+    // 虚拟机配置更新
     #[tracing::instrument(skip(self, request), fields(id = request.id))]
     async fn resize_vm(self, request: ResizeVmRequest) -> Result<()> {
         info!("Resizing VM: {:?}", request);
@@ -395,7 +396,7 @@ impl VmmRpc for RpcHandler {
             .context("Failed to load VM")?;
         Ok(())
     }
-
+    // 关闭虚拟机
     async fn shutdown_vm(self, request: Id) -> Result<()> {
         self.guest_agent_client(&request.id)?.shutdown().await?;
         Ok(())

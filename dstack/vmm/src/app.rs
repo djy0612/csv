@@ -107,9 +107,9 @@ pub struct GpuSpec {
 
 #[derive(Clone)]
 pub struct App {
-    pub config: Arc<Config>,
-    pub supervisor: SupervisorClient,
-    state: Arc<Mutex<AppState>>,
+    pub config: Arc<Config>,            // 系统配置
+    pub supervisor: SupervisorClient,   // 进程监控客户端
+    state: Arc<Mutex<AppState>>,        // 应用状态
 }
 
 impl App {
@@ -138,7 +138,7 @@ impl App {
             config: Arc::new(config),
         }
     }
-
+    // 加载虚拟机
     pub async fn load_vm(
         &self,
         work_dir: impl AsRef<Path>,
@@ -198,7 +198,7 @@ impl App {
         }
         Ok(())
     }
-
+    // 启动虚拟机
     pub async fn start_vm(&self, id: &str) -> Result<()> {
         self.sync_dynamic_config(id)?;
         let is_running = self
@@ -246,13 +246,13 @@ impl App {
             .set_started(started)
             .context("Failed to set started")
     }
-
+    // 停止虚拟机
     pub async fn stop_vm(&self, id: &str) -> Result<()> {
         self.set_started(id, false)?;
         self.supervisor.stop(id).await?;
         Ok(())
     }
-
+    // 删除虚拟机
     pub async fn remove_vm(&self, id: &str) -> Result<()> {
         let info = self.supervisor.info(id).await?;
         let is_running = info.as_ref().is_some_and(|i| i.state.status.is_running());
@@ -278,7 +278,7 @@ impl App {
         fs::remove_dir_all(&vm_path).context("Failed to remove VM directory")?;
         Ok(())
     }
-
+    // 虚拟机重载
     pub async fn reload_vms(&self) -> Result<()> {
         let vm_path = self.vm_dir();
         let running_vms = self.supervisor.list().await.context("Failed to list VMs")?;
@@ -432,7 +432,7 @@ impl App {
     pub(crate) fn shared_dir(&self, id: &str) -> PathBuf {
         self.config.run_path.join(id).join("shared")
     }
-
+    // 准备工作目录
     pub(crate) fn prepare_work_dir(
         &self,
         id: &str,
@@ -442,16 +442,20 @@ impl App {
         let work_dir = self.work_dir(id);
         let shared_dir = work_dir.join("shared");
         fs::create_dir_all(&shared_dir).context("Failed to create shared directory")?;
+        // app-compose.yaml: 应用配置
         fs::write(shared_dir.join(APP_COMPOSE), &req.compose_file)
             .context("Failed to write compose file")?;
+        // encrypted-env: 加密环境变量
         if !req.encrypted_env.is_empty() {
             fs::write(shared_dir.join(ENCRYPTED_ENV), &req.encrypted_env)
                 .context("Failed to write encrypted env")?;
         }
+        // user-config.yaml: 用户配置
         if !req.user_config.is_empty() {
             fs::write(shared_dir.join(USER_CONFIG), &req.user_config)
                 .context("Failed to write user config")?;
         }
+        // instance.info: 实例信息
         if !app_id.is_empty() {
             let instance_info = json!({
                 "app_id": app_id,
@@ -464,7 +468,7 @@ impl App {
         }
         Ok(work_dir)
     }
-
+    // 动态配置同步
     pub(crate) fn sync_dynamic_config(&self, id: &str) -> Result<()> {
         let work_dir = self.work_dir(id);
         let shared_dir = self.shared_dir(id);
@@ -588,7 +592,7 @@ impl App {
             "vsock://{cid}:8000/api"
         )))
     }
-
+    // GPU 分配
     fn try_allocate_gpus(&self, manifest: &Manifest) -> Result<GpuConfig> {
         if !self.config.cvm.gpu.enabled {
             return Ok(GpuConfig::default());
@@ -615,7 +619,7 @@ impl App {
             .collect();
         Ok(gpus)
     }
-
+    // 自动重启虚拟机
     pub(crate) async fn try_restart_exited_vms(&self) -> Result<()> {
         let running_vms = self
             .supervisor
@@ -658,19 +662,19 @@ fn paginate<T>(items: Vec<T>, page: u32, page_size: u32) -> impl Iterator<Item =
     }
     items.into_iter().skip(skip).take(take)
 }
-
+// 单个虚拟机状态
 #[derive(Clone)]
 pub struct VmState {
-    pub(crate) config: Arc<VmConfig>,
-    state: VmStateMut,
+    pub(crate) config: Arc<VmConfig>,   // 虚拟机配置
+    state: VmStateMut,                  // 可变状态
 }
 
 #[derive(Debug, Clone, Default)]
 struct VmStateMut {
-    boot_progress: String,
-    boot_error: String,
-    shutdown_progress: String,
-    devices: GpuConfig,
+    boot_progress: String,              // 启动进度
+    boot_error: String,                 // 启动错误信息
+    shutdown_progress: String,          // 关闭进度
+    devices: GpuConfig,                 // 分配的 GPU 设备
 }
 
 impl VmStateMut {
@@ -701,8 +705,8 @@ impl VmState {
 }
 
 pub(crate) struct AppState {
-    cid_pool: IdPool<u32>,
-    vms: HashMap<String, VmState>,
+    cid_pool: IdPool<u32>,          // CID 分配池
+    vms: HashMap<String, VmState>,  // 虚拟机状态映射
 }
 
 impl AppState {

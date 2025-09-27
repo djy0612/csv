@@ -11,7 +11,8 @@ pub use supervisor;
 pub struct SupervisorClient {
     base_url: Arc<String>,
 }
-
+//实现了一个功能完善的客户端，用于与一个名为 "Supervisor" 的进程管理守护进程进行通信。
+//Supervisor 守护进程负责启动、停止、监控和管理其他子进程。
 impl SupervisorClient {
     pub fn new(base_url: &str) -> Self {
         SupervisorClient {

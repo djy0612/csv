@@ -7,22 +7,22 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ImageInfo {
-    pub cmdline: Option<String>,
-    pub kernel: String,
-    pub initrd: String,
-    pub hda: Option<String>,
-    pub rootfs: Option<String>,
-    pub bios: Option<String>,
+    pub cmdline: Option<String>,    // 内核启动命令行参数
+    pub kernel: String,             // 内核文件路径
+    pub initrd: String,             // 初始化 RAM 磁盘路径
+    pub hda: Option<String>,        // 硬盘镜像路径
+    pub rootfs: Option<String>,     // 根文件系统路径
+    pub bios: Option<String>,       // BIOS 文件路径
     #[serde(default)]
-    pub rootfs_hash: Option<String>,
+    pub rootfs_hash: Option<String>,// 根文件系统的哈希值
     #[serde(default)]
-    pub shared_ro: bool,
+    pub shared_ro: bool,            // 是否以只读方式挂载共享目录   
     #[serde(default)]
-    pub version: String,
+    pub version: String,            // 镜像版本
     #[serde(default)]
-    pub is_dev: bool,
+    pub is_dev: bool,               // 是否为开发版本   
 }
-
+//将版本字符串解析为三元组
 impl ImageInfo {
     pub fn version_tuple(&self) -> Option<(u16, u16, u16)> {
         let version = self
@@ -38,7 +38,7 @@ impl ImageInfo {
         Some((version[0], version[1], version[2]))
     }
 }
-
+//从指定的 JSON 文件中加载镜像元数据
 impl ImageInfo {
     pub fn load(filename: impl AsRef<Path>) -> Result<Self> {
         let file = fs::File::open(filename.as_ref()).context("failed to open image info")?;
@@ -50,15 +50,15 @@ impl ImageInfo {
 
 #[derive(Debug)]
 pub struct Image {
-    pub info: ImageInfo,
-    pub initrd: PathBuf,
-    pub kernel: PathBuf,
-    pub hda: Option<PathBuf>,
-    pub rootfs: Option<PathBuf>,
-    pub bios: Option<PathBuf>,
-    pub digest: Option<String>,
+    pub info: ImageInfo,        // 镜像元数据
+    pub initrd: PathBuf,        // 绝对路径：initrd
+    pub kernel: PathBuf,        // 绝对路径：kernel
+    pub hda: Option<PathBuf>,   // 绝对路径：硬盘镜像
+    pub rootfs: Option<PathBuf>,// 绝对路径：根文件系统
+    pub bios: Option<PathBuf>,  // 绝对路径：BIOS
+    pub digest: Option<String>, // 镜像摘要值
 }
-
+//镜像加载
 impl Image {
     pub fn load(base_path: impl AsRef<Path>) -> Result<Self> {
         let base_path = base_path.as_ref().absolutize()?;
@@ -86,7 +86,7 @@ impl Image {
         }
         .ensure_exists()
     }
-
+    //确保所有必要的文件都存在
     fn ensure_exists(self) -> Result<Self> {
         if !self.initrd.exists() {
             bail!("Initrd does not exist: {}", self.initrd.display());
@@ -112,7 +112,7 @@ impl Image {
         Ok(self)
     }
 }
-
+//根据镜像文件夹的名称猜测版本号
 fn guess_version(base_path: &Path) -> Option<String> {
     // name pattern: dstack-dev-0.2.3 or dstack-0.2.3
     let basename = base_path.file_name()?.to_str()?.to_string();
