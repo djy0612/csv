@@ -109,5 +109,8 @@
     },
     "dstack/vmm/src/main.rs": {
         "description": "VMM 系统的主入口文件"
+    },
+    "scripts": {
+        "description": "脚本"
     }
 }
