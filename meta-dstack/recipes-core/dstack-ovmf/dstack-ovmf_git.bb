@@ -51,7 +51,7 @@ PARALLEL_MAKE = ""
 
 S = "${WORKDIR}/git"
 
-DEPENDS = "nasm-native acpica-native ovmf-native util-linux-native"
+DEPENDS = "nasm-native acpica-native ovmf-native util-linux-native grub-efi-native"
 
 EDK_TOOLS_DIR="edk2_basetools"
 
