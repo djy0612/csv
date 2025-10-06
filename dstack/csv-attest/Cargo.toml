@@ -5,6 +5,10 @@ authors.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[[example]]
+name = "csv_attest_demo"
+path = "examples/csv_attest_demo.rs"
+
 [dependencies]
 csv-attest-sys = { workspace = true }
 anyhow.workspace = true
@@ -14,3 +18,7 @@ serde.workspace = true
 serde_json.workspace = true
 fs-err.workspace = true
 num_enum.workspace = true
+
+[build-dependencies]
+cc = "1.0"
+pkg-config = "0.3"

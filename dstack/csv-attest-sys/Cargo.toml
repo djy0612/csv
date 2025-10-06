@@ -8,6 +8,11 @@ license.workspace = true
 [build-dependencies]
 bindgen.workspace = true
 cc.workspace = true
+pkg-config = "0.3"
 
 [dependencies]
 libc.workspace = true
+
+[features]
+default = []
+log = []
