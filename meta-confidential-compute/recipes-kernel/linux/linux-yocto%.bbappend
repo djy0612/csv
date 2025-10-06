@@ -12,5 +12,13 @@ KERNEL_FEATURES:append:tdx=" features/scsi/disk.scc"
 KERNEL_FEATURES:append:tdx=" cfg/virtio.scc cfg/paravirt_kvm.scc cfg/fs/ext4.scc"
 KERNEL_FEATURES:append:tdx=" tdx.scc tpm2.scc hyperv.scc security-mitigations.scc disk-encryption.scc"
 
+# CSV machine (Hygon CSV specific configuration)
+KMACHINE:csv ?= "common-pc-64"
+COMPATIBLE_MACHINE:csv = "csv"
+
+KERNEL_FEATURES:append:csv=" features/scsi/disk.scc"
+KERNEL_FEATURES:append:csv=" cfg/virtio.scc cfg/paravirt_kvm.scc cfg/fs/ext4.scc"
+KERNEL_FEATURES:append:csv=" csv.scc tpm2.scc hyperv.scc disk-encryption.scc"
+
 #require ${@bb.utils.contains('IMAGE_FEATURES', 'hyperv', 'linux-yocto-hyperv.inc', '', d)}
 require ${@bb.utils.contains('DISTRO_FEATURES', 'cvm', 'linux-yocto-cvm.inc', '', d)}

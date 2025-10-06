@@ -12,7 +12,8 @@ IMAGE_INSTALL = "\
     iptables \
     docker-moby \
     docker-compose \
-    tdx-guest-ko \
+    ${@bb.utils.contains('MACHINE', 'tdx', 'tdx-guest-ko', '', d)} \
+    ${@bb.utils.contains_any('MACHINE', ['sev-snp', 'csv'], 'csv-guest-ko', '', d)} \
     dstack-guest \
     wireguard-tools \
     cryptsetup \

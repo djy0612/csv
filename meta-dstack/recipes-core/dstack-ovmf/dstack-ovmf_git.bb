@@ -197,24 +197,46 @@ do_compile:class-target() {
     mkdir ${WORKDIR}/ovmf
     FIXED_GCCVER=$(fixup_target_tools ${GCC_VER})
     bbnote FIXED_GCCVER is ${FIXED_GCCVER}
-    build_dir="${S}/Build/IntelTdx/RELEASE_${FIXED_GCCVER}"
 
-    bbnote "Building without Secure Boot."
-    rm -rf ${S}/Build/IntelTdx
-    ${S}/OvmfPkg/build.sh -p ${S}/OvmfPkg/IntelTdx/IntelTdxX64.dsc $PARALLEL_JOBS -a $OVMF_ARCH -b RELEASE -t ${FIXED_GCCVER} ${PACKAGECONFIG_CONFARGS}
-    ln ${build_dir}/FV/OVMF.fd ${WORKDIR}/ovmf/ovmf.fd
-    ln ${build_dir}/FV/OVMF_CODE.fd ${WORKDIR}/ovmf/ovmf.code.fd
-    ln ${build_dir}/FV/OVMF_VARS.fd ${WORKDIR}/ovmf/ovmf.vars.fd
-    ln ${build_dir}/${OVMF_ARCH}/Shell.efi ${WORKDIR}/ovmf/
+    # 将现有的固定 IntelTdx 构建替换为：
+    # Build different firmware by MACHINE
+    if ${@bb.utils.contains_any('MACHINE', ['sev-snp', 'csv'], 'true', 'false', d)}; then
+        build_dir="${S}/Build/AmdSev/RELEASE_${FIXED_GCCVER}"
+        bbnote "Building AmdSev without Secure Boot."
+        rm -rf ${S}/Build/AmdSev
+        ${S}/OvmfPkg/build.sh -p ${S}/OvmfPkg/AmdSev/AmdSevX64.dsc $PARALLEL_JOBS -a $OVMF_ARCH -b RELEASE -t ${FIXED_GCCVER} ${PACKAGECONFIG_CONFARGS}
+        ln ${build_dir}/FV/OVMF.fd ${WORKDIR}/ovmf/ovmf.fd
+        ln ${build_dir}/FV/OVMF_CODE.fd ${WORKDIR}/ovmf/ovmf.code.fd
+        ln ${build_dir}/FV/OVMF_VARS.fd ${WORKDIR}/ovmf/ovmf.vars.fd
+        ln ${build_dir}/${OVMF_ARCH}/Shell.efi ${WORKDIR}/ovmf/
 
-    if ${@bb.utils.contains('PACKAGECONFIG', 'secureboot', 'true', 'false', d)}; then
-        # Repeat build with the Secure Boot flags.
-        bbnote "Building with Secure Boot."
+        if ${@bb.utils.contains('PACKAGECONFIG', 'secureboot', 'true', 'false', d)}; then
+            bbnote "Building AmdSev with Secure Boot."
+            rm -rf ${S}/Build/AmdSev
+            ${S}/OvmfPkg/build.sh -p ${S}/OvmfPkg/AmdSev/AmdSevX64.dsc $PARALLEL_JOBS -a $OVMF_ARCH -b RELEASE -t ${FIXED_GCCVER} ${PACKAGECONFIG_CONFARGS} ${OVMF_SECURE_BOOT_FLAGS}
+            ln ${build_dir}/FV/OVMF.fd ${WORKDIR}/ovmf/ovmf.secboot.fd
+            ln ${build_dir}/FV/OVMF_CODE.fd ${WORKDIR}/ovmf/ovmf.secboot.code.fd
+            ln ${build_dir}/${OVMF_ARCH}/EnrollDefaultKeys.efi ${WORKDIR}/ovmf/
+        fi
+    else
+        # 保持原有的 IntelTdx 构建逻辑
+        build_dir="${S}/Build/IntelTdx/RELEASE_${FIXED_GCCVER}"
+        bbnote "Building IntelTdx without Secure Boot."
         rm -rf ${S}/Build/IntelTdx
-        ${S}/OvmfPkg/build.sh -p ${S}/OvmfPkg/IntelTdx/IntelTdxX64.dsc $PARALLEL_JOBS -a $OVMF_ARCH -b RELEASE -t ${FIXED_GCCVER} ${PACKAGECONFIG_CONFARGS} ${OVMF_SECURE_BOOT_FLAGS}
-        ln ${build_dir}/FV/OVMF.fd ${WORKDIR}/ovmf/ovmf.secboot.fd
-        ln ${build_dir}/FV/OVMF_CODE.fd ${WORKDIR}/ovmf/ovmf.secboot.code.fd
-        ln ${build_dir}/${OVMF_ARCH}/EnrollDefaultKeys.efi ${WORKDIR}/ovmf/
+        ${S}/OvmfPkg/build.sh -p ${S}/OvmfPkg/IntelTdx/IntelTdxX64.dsc $PARALLEL_JOBS -a $OVMF_ARCH -b RELEASE -t ${FIXED_GCCVER} ${PACKAGECONFIG_CONFARGS}
+        ln ${build_dir}/FV/OVMF.fd ${WORKDIR}/ovmf/ovmf.fd
+        ln ${build_dir}/FV/OVMF_CODE.fd ${WORKDIR}/ovmf/ovmf.code.fd
+        ln ${build_dir}/FV/OVMF_VARS.fd ${WORKDIR}/ovmf/ovmf.vars.fd
+        ln ${build_dir}/${OVMF_ARCH}/Shell.efi ${WORKDIR}/ovmf/
+
+        if ${@bb.utils.contains('PACKAGECONFIG', 'secureboot', 'true', 'false', d)}; then
+            bbnote "Building IntelTdx with Secure Boot."
+            rm -rf ${S}/Build/IntelTdx
+            ${S}/OvmfPkg/build.sh -p ${S}/OvmfPkg/IntelTdx/IntelTdxX64.dsc $PARALLEL_JOBS -a $OVMF_ARCH -b RELEASE -t ${FIXED_GCCVER} ${PACKAGECONFIG_CONFARGS} ${OVMF_SECURE_BOOT_FLAGS}
+            ln ${build_dir}/FV/OVMF.fd ${WORKDIR}/ovmf/ovmf.secboot.fd
+            ln ${build_dir}/FV/OVMF_CODE.fd ${WORKDIR}/ovmf/ovmf.secboot.code.fd
+            ln ${build_dir}/${OVMF_ARCH}/EnrollDefaultKeys.efi ${WORKDIR}/ovmf/
+        fi
     fi
 }
 

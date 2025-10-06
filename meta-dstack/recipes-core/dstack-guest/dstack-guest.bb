@@ -23,6 +23,8 @@ SYSTEMD_PACKAGES = "${@bb.utils.contains('DISTRO_FEATURES','systemd','${PN}','',
 SYSTEMD_SERVICE:${PN} = "${@bb.utils.contains('DISTRO_FEATURES','systemd','${DSTACK_SERVICES}','',d)}"
 SYSTEMD_AUTO_ENABLE:${PN} = "enable"
 EXTRA_CARGO_FLAGS = "-p dstack-guest-agent -p dstack-util"
+CARGO_FEATURES:append:tdx = " tdx"
+CARGO_FEATURES:append:csv = " csv"
 
 inherit cargo_bin
 
@@ -60,7 +62,14 @@ do_install() {
     install -m 0644 ${S}/basefiles/journald.conf ${D}${sysconfdir}/systemd/journald.conf.d/dstack.conf
 
     install -d ${D}${sysconfdir}/
-    install -m 0644 ${S}/basefiles/tdx-attest.conf ${D}${sysconfdir}/tdx-attest.conf
+    # 根据 MACHINE 安装不同的配置文件
+    if ${@bb.utils.contains('MACHINE', 'tdx', 'true', 'false', d)}; then
+        install -m 0644 ${S}/basefiles/tdx-attest.conf ${D}${sysconfdir}/tdx-attest.conf
+    fi
+    
+    if ${@bb.utils.contains_any('MACHINE', ['sev-snp', 'csv'], 'true', 'false', d)}; then
+        install -m 0644 ${S}/basefiles/csv-attest.conf ${D}${sysconfdir}/csv-attest.conf
+    fi
 
     if ${@bb.utils.contains('DISTRO_FEATURES', 'systemd', 'true', 'false', d)}; then
         install -d ${D}${systemd_system_unitdir} \
