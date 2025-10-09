@@ -1,3 +1,7 @@
+// 修复 glibc 兼容性问题
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
@@ -11,62 +15,13 @@
 #include <immintrin.h>
 #include <errno.h>
 #include <libgen.h>
-
 #include "openssl/evp.h"
-#include "openssl/sm2.h"
 #include "openssl/ec.h"
 #include "openssl/err.h"
-#include "openssl/sm3.h"
 #include "openssl/obj_mac.h"
 #include "openssl/pem.h"
-
-// 从 csv_status.h 复制的关键定义
-#define PAGE_SHIFT 12
-#define PAGE_SIZE (1 << PAGE_SHIFT)
-#define PAGEMAP_LEN 8
-
-#define GUEST_ATTESTATION_NONCE_SIZE 16
-#define GUEST_ATTESTATION_DATA_SIZE 64
-#define HASH_LEN 32
-#define USER_DATA_SIZE 64
-#define HASH_BLOCK_LEN 32
-#define SN_LEN 64
-#define VM_ID_SIZE 16
-#define VM_VERSION_SIZE 16
-#define ECC_LEN 32
-#define ECC_POINT_SIZE 72
-#define SIZE_INT32 4
-
-#define CSV_GUEST_IOC_TYPE 'D'
-#define GET_ATTESTATION_REPORT _IOWR(CSV_GUEST_IOC_TYPE, 1, struct csv_guest_mem)
-
-#define KVM_HC_VM_ATTESTATION 100
-
-// 证书相关定义
-#define KEY_USAGE_TYPE_HRK 0
-#define KEY_USAGE_TYPE_HSK 0x13
-#define KEY_USAGE_TYPE_OCA 0x1001
-#define KEY_USAGE_TYPE_PEK 0x1002
-#define KEY_USAGE_TYPE_CEK 0x1004
-#define KEY_USAGE_TYPE_INVALID 0x1000
-
-#define CURVE_ID_TYPE_P256 0x1
-#define CURVE_ID_TYPE_P384 0x2
-#define CURVE_ID_TYPE_SM2_256 0x3
-
-#define ATTESTATION_REPORT_SIGNED_SIZE 180
-
-// 证书下载地址
-#define HRK_CERT_SITE "https://cert.hygon.cn/hrk"
-#define KDS_CERT_SITE "https://cert.hygon.cn/hsk_cek?snumber="
-
-// 文件名定义
-#define HRK_FILENAME "./hrk.cert"
-#define HSK_FILENAME "./hsk.cert"
-#define CEK_FILENAME "./cek.cert"
-#define HSK_CEK_FILENAME "hsk_cek.cert"
-#define ATTESTATION_REPORT_FILE "./report.cert"
-#define ATTESTATION_NONCE_FILE "./nonce.bin"
+#include "openssl/sm3.h"
+#include "csv_attest.h"
 
 // 日志宏
 #ifdef LOG_ON
@@ -75,126 +30,77 @@
 #define logcat(format, ...)
 #endif
 
-// 数据结构定义
-typedef struct _hash_block_u {
-    unsigned char block[HASH_LEN];
-} hash_block_u;
-
-typedef struct _userid_u {
-    unsigned short len;
-    unsigned char uid[256 - sizeof(unsigned short)];
-} __attribute__ ((packed)) userid_u;
-
-typedef struct _hash_block {
-    uint8_t block[HASH_BLOCK_LEN];
-} __attribute__ ((packed)) hash_block_t;
-
-typedef struct _chip_key_id {
-    uint8_t id[16];
-} __attribute__ ((packed)) chip_key_id_t;
-
-typedef struct _ecc_pubkey {
-    uint32_t curve_id;
-    uint32_t Qx[ECC_POINT_SIZE / SIZE_INT32];
-    uint32_t Qy[ECC_POINT_SIZE / SIZE_INT32];
-    uint32_t user_id[256 / SIZE_INT32];
-} __attribute__ ((packed)) ecc_pubkey_t;
-
-typedef struct _ecc_signature {
-    uint32_t sig_r[ECC_POINT_SIZE / SIZE_INT32];
-    uint32_t sig_s[ECC_POINT_SIZE / SIZE_INT32];
-} __attribute__ ((packed)) ecc_signature_t;
-
-typedef struct _hygon_root_cert {
-    uint32_t version;
-    chip_key_id_t key_id;
-    chip_key_id_t certifying_id;
-    uint32_t key_usage;
-    uint32_t reserved1[24 / SIZE_INT32];
-    union {
-        uint32_t pubkey[(SIZE_INT32 + ECC_POINT_SIZE * 2 + 256) / SIZE_INT32];
-        ecc_pubkey_t ecc_pubkey;
-    };
-    uint32_t reserved2[108 / SIZE_INT32];
-    union {
-        uint32_t signature[ECC_POINT_SIZE * 2 / SIZE_INT32];
-        ecc_signature_t ecc_sig;
-    };
-    uint32_t reserved3[112 / SIZE_INT32];
-} __attribute__((packed));
-
-typedef struct _hygon_csv_cert {
-    uint32_t version;
-    uint8_t api_major;
-    uint8_t api_minor;
-    uint8_t reserved1;
-    uint8_t reserved2;
-    uint32_t pubkey_usage;
-    uint32_t pubkey_algo;
-    union {
-        uint32_t pubkey[(SIZE_INT32 + ECC_POINT_SIZE * 2 + 256) / SIZE_INT32];
-        ecc_pubkey_t ecc_pubkey;
-    };
-    uint32_t reserved3[624 / SIZE_INT32];
-    uint32_t sig1_usage;
-    uint32_t sig1_algo;
-    union {
-        uint32_t sig1[ECC_POINT_SIZE * 2 / SIZE_INT32];
-        ecc_signature_t ecc_sig1;
-    };
-    uint32_t reserved4[368 / SIZE_INT32];
-    uint32_t sig2_usage;
-    uint32_t sig2_algo;
-    union {
-        uint32_t sig2[ECC_POINT_SIZE * 2 / SIZE_INT32];
-        ecc_signature_t ecc_sig2;
-    };
-    uint32_t reserved5[368 / SIZE_INT32];
-} __attribute__((packed));
-
-typedef struct _hygon_root_cert CHIP_ROOT_CERT_t;
-typedef struct _hygon_csv_cert CSV_CERT_t;
-
-struct csv_attestation_report {
-    hash_block_t user_pubkey_digest;
-    uint8_t vm_id[VM_ID_SIZE];
-    uint8_t vm_version[VM_VERSION_SIZE];
-    uint8_t user_data[USER_DATA_SIZE];
-    uint8_t mnonce[GUEST_ATTESTATION_NONCE_SIZE];
-    hash_block_t measure;
-    uint32_t policy;
-    uint32_t sig_usage;
-    uint32_t sig_algo;
-    uint32_t anonce;
-    union {
-        uint32_t sig1[ECC_POINT_SIZE*2/SIZE_INT32];
-        ecc_signature_t ecc_sig1;
-    };
-    CSV_CERT_t pek_cert;
-    uint8_t sn[SN_LEN];
-    uint8_t reserved2[32];
-    hash_block_u mac;
-};
-
-struct csv_attestation_user_data {
-    uint8_t data[GUEST_ATTESTATION_DATA_SIZE];
-    uint8_t mnonce[GUEST_ATTESTATION_NONCE_SIZE];
-    hash_block_u hash;
-};
-
-struct csv_guest_mem {
-    unsigned long va;
-    int size;
-};
-
 // 全局变量
 static uint8_t g_user_data[USER_DATA_SIZE];
 static uint8_t g_measure[HASH_BLOCK_LEN];
 static uint8_t g_chip_id[SN_LEN];
 static uint8_t g_mnonce[GUEST_ATTESTATION_NONCE_SIZE] = {0};
 static uint8_t r_mnonce[GUEST_ATTESTATION_NONCE_SIZE] = {0};
-static CSV_CERT_t g_pek_cert;
+static csv_cert_t g_pek_cert;
 static char *external_oca_file = NULL;
+
+// Hypercall实现 - 与官方代码保持一致
+static long hypercall(unsigned int nr, unsigned long p1, unsigned int len) {
+    long ret = 0;
+    asm volatile("vmmcall"
+        : "=a"(ret)
+        : "a"(nr), "b"(p1), "c"(len)
+        : "memory");
+    return ret;
+}
+
+// IOCTL接口实现 - 与官方代码保持一致
+int csv_get_attestation_report_ioctl(unsigned char* report_buf, unsigned int buf_len,
+                                   unsigned char* nonce, unsigned int nonce_len) {
+    int fd = open("/dev/csv-guest", O_RDWR);
+    if (fd < 0) {
+        logcat("Failed to open /dev/csv-guest: %s\n", strerror(errno));
+        return CSV_ERROR_IOCTL_FAILED;
+    }
+    
+    struct csv_guest_mem mem_para = {
+        .va = (unsigned long)report_buf,
+        .size = buf_len
+    };
+    
+    // 准备用户数据
+    struct csv_attestation_user_data user_data = {0};
+    memcpy(user_data.data, g_user_data, GUEST_ATTESTATION_DATA_SIZE);
+    memcpy(user_data.mnonce, nonce, GUEST_ATTESTATION_NONCE_SIZE);
+    memcpy(user_data.hash.block, g_measure, HASH_BLOCK_LEN);
+    
+    // 将用户数据复制到报告缓冲区
+    memcpy(report_buf, &user_data, sizeof(user_data));
+    
+    int ret = ioctl(fd, GET_ATTESTATION_REPORT, &mem_para);
+    close(fd);
+    
+    if (ret < 0) {
+        logcat("IOCTL failed: %s\n", strerror(errno));
+        return CSV_ERROR_IOCTL_FAILED;
+    }
+    
+    return CSV_SUCCESS;
+}
+
+// VMMCALL接口实现 - 与官方代码保持一致
+int csv_get_attestation_report(unsigned char* report_buf, unsigned int buf_len) {
+    struct csv_attestation_user_data user_data = {0};
+    memcpy(user_data.data, g_user_data, GUEST_ATTESTATION_DATA_SIZE);
+    memcpy(user_data.mnonce, g_mnonce, GUEST_ATTESTATION_NONCE_SIZE);
+    memcpy(user_data.hash.block, g_measure, HASH_BLOCK_LEN);
+    
+    // 将用户数据复制到报告缓冲区
+    memcpy(report_buf, &user_data, sizeof(user_data));
+    
+    long ret = hypercall(KVM_HC_VM_ATTESTATION, (unsigned long)report_buf, buf_len);
+    if (ret < 0) {
+        logcat("Hypercall failed: %ld\n", ret);
+        return CSV_ERROR_HYPERCALL_FAILED;
+    }
+    
+    return CSV_SUCCESS;
+}
 
 // 辅助函数
 void csv_gen_random_bytes(void *buf, uint32_t len)
@@ -248,17 +154,6 @@ uint64_t va_to_pa(uint64_t va)
     fclose(pagemap);
     
     return pfn << PAGE_SHIFT;
-}
-
-long hypercall(unsigned int nr, unsigned long p1, unsigned int len)
-{
-    long ret = 0;
-
-    asm volatile("vmmcall"
-        : "=a"(ret)
-        : "a"(nr), "b"(p1), "c"(len)
-        : "memory");
-    return ret;
 }
 
 int get_attestation_report(struct csv_attestation_report *report)
@@ -404,65 +299,119 @@ void invert_endian(unsigned char* buf, int len)
     }
 }
 
-// SM2 签名验证函数
+// SM2 签名验证函数 - 使用OpenSSL 3.0标准API
 int gmssl_sm2_verify(struct ecc_point_q Q, unsigned char *userid,
                      unsigned int userid_len, const unsigned char *msg, 
                      unsigned int msg_len, struct ecdsa_sign *sig_in)
 {
-    int ret;
-    EC_KEY *eckey;
-    unsigned char dgst[ECC_LEN];
-    long unsigned int dgstlen;
-
+    EVP_PKEY_CTX *pkey_ctx = NULL;
+    EVP_PKEY *pkey = NULL;
+    EVP_MD_CTX *md_ctx = NULL;
+    EC_KEY *ec_key = NULL;
+    EC_GROUP *group = NULL;
+    EC_POINT *point = NULL;
+    BIGNUM *x = NULL, *y = NULL;
+    int ret = -1;
+    
     if (!msg || !userid || !sig_in) {
         logcat("gmssl_sm2_verify: invalid input parameter\n");
         return -1;
     }
-
-    invert_endian(sig_in->r, ECC_LEN);
-    invert_endian(sig_in->s, ECC_LEN);
-
-    BIGNUM *bn_qx = BN_bin2bn(Q.Qx, 32, NULL);
-    BIGNUM *bn_qy = BN_bin2bn(Q.Qy, 32, NULL);
-
-    eckey = EC_KEY_new();
-    EC_GROUP *group256 = EC_GROUP_new_by_curve_name(NID_sm2p256v1);
-    EC_KEY_set_group(eckey, group256);
-    EC_POINT *ecpt_pubkey = EC_POINT_new(group256);
-    EC_POINT_set_affine_coordinates_GFp(group256, ecpt_pubkey, bn_qx, bn_qy, NULL);
-    EC_KEY_set_public_key(eckey, ecpt_pubkey);
-
-    if (eckey == NULL) {
-        logcat("EC_KEY_new_by_curve_name failed\n");
-        EC_POINT_free(ecpt_pubkey);
-        EC_GROUP_free(group256);
-        return -1;
+    
+    // 创建SM2椭圆曲线组
+    group = EC_GROUP_new_by_curve_name(NID_sm2);
+    if (!group) {
+        logcat("Failed to create SM2 group\n");
+        goto cleanup;
     }
-
-    dgstlen = sizeof(dgst);
-    SM2_compute_message_digest(EVP_sm3(), EVP_sm3(), msg, msg_len, 
-                               (const char *)userid, userid_len, dgst, &dgstlen, eckey);
-
-    ECDSA_SIG *s = ECDSA_SIG_new();
-    BIGNUM *sig_r = BN_new();
-    BIGNUM *sig_s = BN_new();
-    BN_bin2bn(sig_in->r, 32, sig_r);
-    BN_bin2bn(sig_in->s, 32, sig_s);
-    ECDSA_SIG_set0(s, sig_r, sig_s);
-
-    ret = SM2_do_verify(dgst, dgstlen, s, eckey);
-
-    EC_POINT_free(ecpt_pubkey);
-    ECDSA_SIG_free(s);
-    EC_GROUP_free(group256);
-    EC_KEY_free(eckey);
-
-    if (1 != ret) {
-        logcat("SM2_do_verify failed, ret=%d\n", ret);
-        return -1;
+    
+    // 创建EC_KEY
+    ec_key = EC_KEY_new();
+    if (!ec_key) {
+        logcat("Failed to create EC_KEY\n");
+        goto cleanup;
     }
-
-    return 0;
+    
+    // 设置椭圆曲线组
+    if (!EC_KEY_set_group(ec_key, group)) {
+        logcat("Failed to set EC group\n");
+        goto cleanup;
+    }
+    
+    // 创建椭圆曲线点
+    point = EC_POINT_new(group);
+    if (!point) {
+        logcat("Failed to create EC point\n");
+        goto cleanup;
+    }
+    
+    // 设置公钥点
+    x = BN_bin2bn(Q.Qx, ECC_LEN, NULL);
+    y = BN_bin2bn(Q.Qy, ECC_LEN, NULL);
+    if (!x || !y) {
+        logcat("Failed to create BIGNUM\n");
+        goto cleanup;
+    }
+    
+    if (!EC_POINT_set_affine_coordinates(group, point, x, y, NULL)) {
+        logcat("Failed to set EC point coordinates\n");
+        goto cleanup;
+    }
+    
+    if (!EC_KEY_set_public_key(ec_key, point)) {
+        logcat("Failed to set public key\n");
+        goto cleanup;
+    }
+    
+    // 创建EVP_PKEY
+    pkey = EVP_PKEY_new();
+    if (!pkey) {
+        logcat("Failed to create EVP_PKEY\n");
+        goto cleanup;
+    }
+    
+    if (!EVP_PKEY_set1_EC_KEY(pkey, ec_key)) {
+        logcat("Failed to set EC_KEY to EVP_PKEY\n");
+        goto cleanup;
+    }
+    
+    // 创建验证上下文
+    md_ctx = EVP_MD_CTX_new();
+    if (!md_ctx) {
+        logcat("Failed to create MD context\n");
+        goto cleanup;
+    }
+    
+    // 初始化验证
+    if (!EVP_DigestVerifyInit(md_ctx, &pkey_ctx, EVP_sm3(), NULL, pkey)) {
+        logcat("Failed to init digest verify\n");
+        goto cleanup;
+    }
+    
+    // 设置SM2用户ID
+    if (!EVP_PKEY_CTX_set1_id(pkey_ctx, userid, userid_len)) {
+        logcat("Failed to set SM2 user ID\n");
+        goto cleanup;
+    }
+    
+    // 验证签名
+    if (EVP_DigestVerify(md_ctx, sig_in->r, ECC_LEN, msg, msg_len) == 1) {
+        ret = 0; // 验证成功
+    } else {
+        logcat("SM2 verification failed\n");
+        ret = -1;
+    }
+    
+cleanup:
+    if (point) EC_POINT_free(point);
+    if (x) BN_free(x);
+    if (y) BN_free(y);
+    if (ec_key) EC_KEY_free(ec_key);
+    if (group) EC_GROUP_free(group);
+    if (pkey) EVP_PKEY_free(pkey);
+    if (md_ctx) EVP_MD_CTX_free(md_ctx);
+    
+    return ret;
 }
 
 // 通用证书验证函数
@@ -486,7 +435,7 @@ int csv_cert_verify(const char *data, uint32_t datalen, ecc_signature_t *signatu
 }
 
 // 验证 HRK 证书签名
-int verify_hrk_cert_signature(CHIP_ROOT_CERT_t *hrk)
+int verify_hrk_cert_signature(chip_root_cert_t *hrk)
 {
     struct ecc_point_q Q;
     struct ecdsa_sign sig_in;
@@ -518,7 +467,7 @@ int verify_hrk_cert_signature(CHIP_ROOT_CERT_t *hrk)
 }
 
 // 验证 HSK 证书签名
-int verify_hsk_cert_signature(CHIP_ROOT_CERT_t *hrk, CHIP_ROOT_CERT_t *hsk)
+int verify_hsk_cert_signature(chip_root_cert_t *hrk, chip_root_cert_t *hsk)
 {
     struct ecc_point_q Q;
     struct ecdsa_sign sig_in;
@@ -550,7 +499,7 @@ int verify_hsk_cert_signature(CHIP_ROOT_CERT_t *hrk, CHIP_ROOT_CERT_t *hsk)
 }
 
 // 验证 CEK 证书签名
-int verify_cek_signature(CHIP_ROOT_CERT_t *hsk, CSV_CERT_t *cek)
+int verify_cek_signature(chip_root_cert_t *hsk, csv_cert_t *cek)
 {
     struct ecc_point_q Q;
     struct ecdsa_sign sig_in;
@@ -588,7 +537,7 @@ int verify_cek_signature(CHIP_ROOT_CERT_t *hsk, CSV_CERT_t *cek)
 }
 
 // 验证 PEK 证书签名
-int verify_pek_cert_with_cek_signature(CSV_CERT_t *cek, CSV_CERT_t *pek)
+int verify_pek_cert_with_cek_signature(csv_cert_t *cek, csv_cert_t *pek)
 {
     struct ecc_point_q Q;
     struct ecdsa_sign sig_in;
@@ -622,7 +571,7 @@ int verify_pek_cert_with_cek_signature(CSV_CERT_t *cek, CSV_CERT_t *pek)
 // 验证证明报告签名
 int csv_attestation_report_verify(struct csv_attestation_report *report)
 {
-    CSV_CERT_t *pek_cert;
+    csv_cert_t *pek_cert;
     int ret = 0;
 
     logcat("verify: do verify\n");
@@ -755,8 +704,8 @@ int load_hsk_cek_file(char *chip_id, void *hsk, size_t hsk_len, void *cek, size_
 {
     int ret;
     struct {
-        CHIP_ROOT_CERT_t hsk;
-        CSV_CERT_t cek;
+        chip_root_cert_t hsk;
+        csv_cert_t cek;
     } __attribute__((aligned(1))) HCK_file;
 
     ret = get_hsk_cek_cert(HSK_CEK_FILENAME, chip_id);
@@ -780,16 +729,16 @@ int load_hsk_cek_file(char *chip_id, void *hsk, size_t hsk_len, void *cek, size_
 // 完整的证书链验证
 int validate_cert_chain(struct csv_attestation_report *report)
 {
-    CSV_CERT_t cek;
-    CHIP_ROOT_CERT_t hsk;
-    CHIP_ROOT_CERT_t hrk;
-    CSV_CERT_t oca;
+    csv_cert_t cek;
+    chip_root_cert_t hsk;
+    chip_root_cert_t hrk;
+    csv_cert_t oca;
     int success = 0;
     int ret;
 
     // 证书加载与有效性预检查
     do {
-        ret = load_hrk_file(HRK_FILENAME, &hrk, sizeof(CHIP_ROOT_CERT_t));
+        ret = load_hrk_file(HRK_FILENAME, &hrk, sizeof(chip_root_cert_t));
         if(ret) {
             logcat("hrk.cert doesn't exist or size isn't correct\n");
             break;
@@ -799,7 +748,7 @@ int validate_cert_chain(struct csv_attestation_report *report)
             break;
         }
 
-        ret = load_hsk_cek_file((char *)g_chip_id, &hsk, sizeof(CHIP_ROOT_CERT_t), &cek, sizeof(CSV_CERT_t));
+        ret = load_hsk_cek_file((char *)g_chip_id, &hsk, sizeof(chip_root_cert_t), &cek, sizeof(csv_cert_t));
         if(ret) {
             logcat("Error: load hsk-cek cert failed\n");
             break;
@@ -957,55 +906,4 @@ int csv_verify_attestation_report(unsigned char* report_buf, unsigned int buf_le
     ret = csv_attestation_report_verify(&report);
 
     return ret;
-}
-
-// 主要的 API 函数
-int csv_get_attestation_report_ioctl(unsigned char* report_buf, unsigned int buf_len,
-                                   unsigned char* nonce, unsigned int nonce_len)
-{
-    int ret;
-    struct csv_attestation_report report;
-
-    if (buf_len < sizeof(report)){
-        logcat("The allocated length is too short to meet the generated report!\n");
-        logcat("The length should not be less than %ld \n", sizeof(report));
-        return -1;
-    }
-
-    if (report_buf == NULL) {
-        logcat("allocate memory failed\n");
-        return -1;
-    }
-
-    if (nonce == NULL) {
-        logcat("invalid nonce \n");
-        return -1;
-    }
-
-    if (nonce_len != GUEST_ATTESTATION_NONCE_SIZE) {
-        logcat("invalid nonce length\n");
-        return -1;
-    }
-
-    logcat("Requesting attestation report ... \n");
-
-    ret = get_attestation_report_ioctl(&report, nonce, nonce_len);
-    if (ret) {
-        logcat("get attestation report fail\n");
-        return -1;
-    }
-
-    logcat("Received attestation report \n");
-    ret = verify_session_mac(&report);
-    if (ret) {
-        logcat("PEK cert and ChipId have been tampered with\n");
-        return ret;
-    } else {
-        logcat("check PEK cert and ChipId successfully\n");
-    }
-
-    memset(report.reserved2, 0, sizeof(report.reserved2));
-    memcpy(report_buf, &report, sizeof(report));
-
-    return 0;
 }

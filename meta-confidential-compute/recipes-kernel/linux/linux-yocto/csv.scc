@@ -1,12 +1,3 @@
-# Hygon CSV kernel configuration
-define KTYPE csv
-endef
-
 define KFEATURE_DESCRIPTION "Hygon CSV Support"
-endef
-
-define KFEATURE_COMPATIBILITY
-    Compatible with Hygon CSV platform
-endef
 
 kconf hardware csv.cfg

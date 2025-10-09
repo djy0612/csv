@@ -91,7 +91,7 @@ do_deploy() {
 	install -m 644 ${B}/${GRUB_IMAGE_PREFIX}${GRUB_IMAGE} ${DEPLOYDIR}
 }
 
-addtask deploy after do_install before do_build
+BBCLASSEXTEND = "native nativesdk"
 
 FILES:${PN} = "${libdir}/grub/${GRUB_TARGET}-efi \
                ${datadir}/grub \

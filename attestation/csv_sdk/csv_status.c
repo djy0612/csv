@@ -1,17 +1,15 @@
-// 标准C库
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <string.h>
-// 系统与硬件相关
-#include <immintrin.h>     //用于访问特定的CPU功能，如硬件随机数生成器
-#include <sys/mman.h>      //内存管理声明，用于 mmap 等内存映射功能
+#include <immintrin.h>
+#include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <libgen.h>
-// 密码学库
+
 #include "openssl/evp.h"
 #include "openssl/sm2.h"
 #include "openssl/ec.h"
@@ -19,28 +17,25 @@
 #include "openssl/sm3.h"
 #include "openssl/obj_mac.h"
 #include "openssl/pem.h"
-// 项目相关头文件
 #include "csv_status.h"
 
-#define PAGE_SHIFT 12                   // 页面大小的位移量，通常为12，表示页面大小为2^12字节（即4096字节）
-#define PAGE_SIZE (1 << PAGE_SHIFT)     // 页面大小，通常为4096字节
-#define PAGEMAP_LEN 8                   // 每个页面在 /proc/[pid]/pagemap 文件中占用的字节数
+#define PAGE_SHIFT 12
+#define PAGE_SIZE (1 << PAGE_SHIFT)
+#define PAGEMAP_LEN 8
 
-static uint8_t g_user_data[USER_DATA_SIZE];             // 存储用户提供给证明报告的数据
-static uint8_t g_measure[HASH_BLOCK_LEN];               // 存储虚拟机的“度量值”
-static uint8_t g_chip_id[SN_LEN];                       // 存储芯片的唯一标识符
+static uint8_t g_user_data[USER_DATA_SIZE];
+static uint8_t g_measure[HASH_BLOCK_LEN];
+static uint8_t g_chip_id[SN_LEN];
 
-uint8_t g_mnonce[GUEST_ATTESTATION_NONCE_SIZE] = {0};   // 存储用于证明报告的随机数
-uint8_t r_mnonce[GUEST_ATTESTATION_NONCE_SIZE] = {0};   // 存储用于报告验证的随机数
+uint8_t g_mnonce[GUEST_ATTESTATION_NONCE_SIZE] = {0};
+uint8_t r_mnonce[GUEST_ATTESTATION_NONCE_SIZE] = {0};
 
-static CSV_CERT_t g_pek_cert;                           // 存储从证明报告中提取出的平台签名密钥证书
+static CSV_CERT_t g_pek_cert;
 
-char * external_oca_file = NULL;                        // 外部OCA证书文件路径
+char * external_oca_file = NULL;
 
 
 /* get hygon attestation report in user mode */
-
-// 生成指定长度的伪随机字节序列
 void gen_random_bytes(void *buf, uint32_t len)
 {
     uint32_t i;
@@ -52,7 +47,7 @@ void gen_random_bytes(void *buf, uint32_t len)
         buf_byte[i] = rand() & 0xFF;
     }
 }
-// 调试辅助函数,以十六进制格式打印出指定内存区域 (data) 的内容
+
 void csv_data_dump(const char* name, uint8_t *data, uint32_t len)
 {
     logcat("%s:\n", name);
@@ -64,38 +59,36 @@ void csv_data_dump(const char* name, uint8_t *data, uint32_t len)
     logcat("\n");
 }
 
-// 将虚拟地址（Virtual Address, VA）转换为物理地址（Physical Address, PA
+
 uint64_t va_to_pa(uint64_t va)
 {
     FILE *pagemap;
     uint64_t offset, pfn;
-    // 打开当前进程的 pagemap 文件
+
     pagemap = fopen("/proc/self/pagemap", "rb");
     if (!pagemap) {
         logcat("open pagemap fail\n");
         return 0;
     }
-    // 计算在 pagemap 文件中的偏移量
+
     offset = va / PAGE_SIZE * PAGEMAP_LEN;
-    //将文件指针移动到计算出的偏移位置
     if(fseek(pagemap, offset, SEEK_SET) != 0) {
         logcat("seek pagemap fail\n");
         fclose(pagemap);
         return 0;
     }
-    // 从该位置读取一个8字节的条目到变量 pfn 中
+
     if (fread(&pfn, 1, PAGEMAP_LEN - 1, pagemap) != PAGEMAP_LEN - 1) {
         logcat("read pagemap fail\n");
         fclose(pagemap);
         return 0;
     }
-    // 提取物理页面帧号（去除状态位）
+
     pfn &= 0x7FFFFFFFFFFFFF;
 
-    // 计算物理地址,PFN是页的编号，而物理地址是字节的编号，所以将页编号乘以页大小（4096）就得到了该页的起始物理地址
     return pfn << PAGE_SHIFT;
 }
-// 底层封装函数,执行一条特殊的CPU指令 vmmcall,虚拟机向Hypervisor发起了一次“系统调用”，请求Hypervisor为其执行某项特权服务
+
 long hypercall(unsigned int nr, unsigned long p1, unsigned int len)
 {
     long ret = 0;
@@ -106,70 +99,64 @@ long hypercall(unsigned int nr, unsigned long p1, unsigned int len)
              : "memory");
     return ret;
 }
-// 获取证明报告的高层逻辑封装
+
 int get_attestation_report(struct csv_attestation_report *report)
 {
-    struct csv_attestation_user_data *user_data;    //指向用户数据结构的指针，用于存储证明报告所需的输入数据。
-    uint64_t user_data_pa;                          //存储用户数据在物理内存中的地址
-    long ret;                                       //存储函数调用的返回值，用于检查操作是否成功
-    // 确保传入的用于存储报告的指针是有效的
+    struct csv_attestation_user_data *user_data;
+    uint64_t user_data_pa;
+    long ret;
+
     if (!report) {
         logcat("NULL pointer for report\n");
         return -1;
     }
 
-    // 分配一页内存用于存储用户数据
+    // prepare user data
     user_data = mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
     if (user_data == MAP_FAILED) {
         logcat("mmap failed\n");
         return -1;
     }
-    // 打印分配的内存地址
     logcat("mmap %p\n", user_data);
-    // 向缓冲区中填充用户自定义数据
+
     snprintf((char *)user_data->data, GUEST_ATTESTATION_DATA_SIZE, "%s", "user data");
-    // 生成随机数并存储在用户数据结构中
     gen_random_bytes(user_data->mnonce, GUEST_ATTESTATION_NONCE_SIZE);
-    // 保存随机数的副本,用于后续验证
     memcpy(g_mnonce, user_data->mnonce, GUEST_ATTESTATION_NONCE_SIZE);
 
-    // 计算用户数据中自定义数据和随机数的hash值，并将结果返回到用户数据结构中
+    // compute hash and save to the private page
     sm3((const unsigned char *)user_data,
         GUEST_ATTESTATION_DATA_SIZE + GUEST_ATTESTATION_NONCE_SIZE,
         (unsigned char *)&user_data->hash);
-    // 打印调试信息
+
     csv_data_dump("data", user_data->data, GUEST_ATTESTATION_DATA_SIZE);
     csv_data_dump("mnonce", user_data->mnonce, GUEST_ATTESTATION_NONCE_SIZE);
     csv_data_dump("hash", (unsigned char *)&user_data->hash, sizeof(hash_block_u));
     logcat("data: %s\n", user_data->data);
 
-    // 转换实际地址
+    // call host to get attestation report
     user_data_pa = va_to_pa((uint64_t)user_data);
     logcat("user_data_pa: %lx\n", user_data_pa);
-    // 调用 hypercall 获取证明报告
+
     ret = hypercall(KVM_HC_VM_ATTESTATION, user_data_pa, PAGE_SIZE);
     if (ret) {
         logcat("hypercall fail: %ld\n", ret);
         munmap(user_data, PAGE_SIZE);
         return -1;
     }
-    // 将报告从临时的 mmap 缓冲区拷贝到调用者提供的 report 结构体中
     memcpy(report, user_data, sizeof(*report));
-    // 释放临时的 mmap 内存页
     munmap(user_data, PAGE_SIZE);
 
     return 0;
 }
-// 对证明报告中的部分关键信息进行消息认证码（MAC）校验
+
 int verify_session_mac(struct csv_attestation_report *report)
 {
-    // 声明一个变量用于存储哈希字节数组
     hash_block_u hmac = {0};
-    // 计算报告中 PEK 证书+芯片序列号+reserved2的 HMAC，并用HMAC秘钥将结果存储在 hmac 变量中
+
     sm3_hmac((const unsigned char*)(&report->pek_cert),
              sizeof(report->pek_cert) + SN_LEN + sizeof(report->reserved2),
              g_mnonce, GUEST_ATTESTATION_NONCE_SIZE,(unsigned char*)(hmac.block));
-    // 比较计算得到的 HMAC 与报告中提供的 HMAC 是否一致
+
     if(memcmp(hmac.block, report->mac.block, sizeof(report->mac.block)) == 0){
         logcat("attestation report MAC verify success\n");
         return 0;
@@ -178,12 +165,12 @@ int verify_session_mac(struct csv_attestation_report *report)
         return -1;
     }
 }
-// 应用程序层面获取并初步验证证明报告的主要接口
+
 int vmmcall_get_attestation_report(unsigned char* report_buf, unsigned int buf_len)
 {
     int ret;
     struct csv_attestation_report report;
-    // 防止缓冲区溢出和空指针解引用
+
     if (buf_len < sizeof(report)){
         logcat("The allocated length is too short to meet the generated report!\n");
         logcat("The length should not be less than %ld \n", sizeof(report));
@@ -196,13 +183,13 @@ int vmmcall_get_attestation_report(unsigned char* report_buf, unsigned int buf_l
     }
 
     logcat("get attestation report & save to %s\n", ATTESTATION_REPORT_FILE);
-    // 获取证明报告
+
     ret = get_attestation_report(&report);
     if (ret) {
         logcat("get attestation report fail\n");
         return -1;
     }
-    // 完整性验证
+
     ret = verify_session_mac(&report);
     if (ret) {
         logcat("PEK cert and ChipId have been tampered with\n");
@@ -210,9 +197,9 @@ int vmmcall_get_attestation_report(unsigned char* report_buf, unsigned int buf_l
     } else {
         logcat("check PEK cert and ChipId successfully\n");
     }
-    // 清除保留字段
+
     memset(report.reserved2, 0, sizeof(report.reserved2));
-    // 拷贝报告到输出缓冲区
+
     memcpy(report_buf, &report, sizeof(report));
 
     return 0;
@@ -220,8 +207,6 @@ int vmmcall_get_attestation_report(unsigned char* report_buf, unsigned int buf_l
 
 
 /* verify hygon attestation report */
-
-// 打印出从证明报告中解密（XOR）后得到的关键全局变量的内容
 void csv_report_dump(struct csv_attestation_report *report)
 {
     csv_data_dump("userdata", g_user_data, sizeof(report->user_data));
@@ -229,7 +214,7 @@ void csv_report_dump(struct csv_attestation_report *report)
     csv_data_dump("measure", g_measure, sizeof(report->measure.block));
     csv_data_dump("sn", g_chip_id, sizeof(report->sn));
 }
-// 字节序转换函数,将字节数组的字节顺序颠倒
+
 void invert_endian(unsigned char* buf, int len)
 {
     int i;
@@ -241,7 +226,7 @@ void invert_endian(unsigned char* buf, int len)
         buf[len - i -1] =  tmp;
     }
 }
-// 验证一个SM2数字签名是否有效
+
 int gmssl_sm2_verify(struct ecc_point_q  Q,unsigned char *userid,
                       unsigned int userid_len, const unsigned char *msg, unsigned int msg_len, struct ecdsa_sign *sig_in){
     int        ret;
@@ -301,7 +286,7 @@ int gmssl_sm2_verify(struct ecc_point_q  Q,unsigned char *userid,
 
     return 0;
 }
-// 通用证书/数据验证
+
 int csv_cert_verify(const char *data, uint32_t datalen, ecc_signature_t *signature, ecc_pubkey_t *pubkey)
 {
     struct ecc_point_q Q;
@@ -318,7 +303,7 @@ int csv_cert_verify(const char *data, uint32_t datalen, ecc_signature_t *signatu
 
     return gmssl_sm2_verify(Q, ((userid_u*)pubkey->user_id)->uid, ((userid_u*)pubkey->user_id)->len, (const unsigned char *)data, datalen, &sig_in);
 }
-// 验证证明报告的签名，确认收到的整个证明报告确实是由平台密钥（PEK）签发的
+
 int csv_attestation_report_verify(struct csv_attestation_report *report)
 {
     CSV_CERT_t *pek_cert;
@@ -333,7 +318,7 @@ int csv_attestation_report_verify(struct csv_attestation_report *report)
 
     return ret;
 }
-// 验证Hygon根证书 (HRK),根证书是自签名的。
+
 int verify_hrk_cert_signature(CHIP_ROOT_CERT_t *hrk){
     struct ecc_point_q Q;
     struct ecdsa_sign sig_in;
@@ -363,7 +348,7 @@ int verify_hrk_cert_signature(CHIP_ROOT_CERT_t *hrk){
 
     return gmssl_sm2_verify(Q, sm2_userid->uid, sm2_userid->len, (const uint8_t *)hrk,64 + 512 , &sig_in);
 }
-// 验证Hygon签发密钥证书 (HSK)
+
 int verify_hsk_cert_signature(CHIP_ROOT_CERT_t *hrk,CHIP_ROOT_CERT_t *hsk){
     struct ecc_point_q Q;
     struct ecdsa_sign sig_in;
@@ -393,7 +378,7 @@ int verify_hsk_cert_signature(CHIP_ROOT_CERT_t *hrk,CHIP_ROOT_CERT_t *hsk){
 
     return gmssl_sm2_verify(Q, sm2_userid->uid, sm2_userid->len, (const uint8_t *)hsk,64 + 512 , &sig_in);
 }
-// 验证芯片背书密钥证书 (CEK)
+
 int verify_cek_signature(CHIP_ROOT_CERT_t *hsk, CSV_CERT_t *cek){
     struct ecc_point_q Q;
     struct ecdsa_sign sig_in;
@@ -429,7 +414,7 @@ int verify_cek_signature(CHIP_ROOT_CERT_t *hsk, CSV_CERT_t *cek){
 
     return gmssl_sm2_verify(Q, sm2_userid->uid, sm2_userid->len, (const uint8_t *)cek,16 + 1028, &sig_in);
 }
-// 验证最终的平台背书密钥（PEK）证书，支持不同验证者类型（CEK或OCA）
+
 static int verify_pek_cert(CSV_CERT_t * verifier, CSV_CERT_t *pek)
 {
     struct ecc_point_q Q;
@@ -472,12 +457,12 @@ static int verify_pek_cert(CSV_CERT_t * verifier, CSV_CERT_t *pek)
 
     return gmssl_sm2_verify(Q, sm2_userid->uid, sm2_userid->len, (const uint8_t *)pek,16 + 1028 , &sig_in);
 }
-// CEK验证PEK的包装函数
+
 int verify_pek_cert_with_cek_signature(CSV_CERT_t *cek, CSV_CERT_t *pek)
 {
     return verify_pek_cert(cek, pek);
 }
-// OCA验证PEK的包装函数
+
 int verify_pek_cert_with_oca_signature(CSV_CERT_t *oca, CSV_CERT_t *pek)
 {
     int ret = -1;
@@ -490,7 +475,7 @@ int verify_pek_cert_with_oca_signature(CSV_CERT_t *oca, CSV_CERT_t *pek)
     return ret;
 
 }
-// 文件读取函数,从指定的 path 读取 len 字节的数据到内存缓冲区 buff 中。
+
 int load_data_from_file(const char *path, void *buff,size_t len)
 {
     if (!path || !*path) {
@@ -528,8 +513,6 @@ int load_data_from_file(const char *path, void *buff,size_t len)
  * Load the cert from disk, if it can't be downloaded online,
  *
  */
-
- //在网络下载失败时，检查本地是否存在证书文件
 static int check_offline_cert(char *filename)
 {
     char path[PATH_MAX] = {0};
@@ -565,7 +548,7 @@ static int check_offline_cert(char *filename)
     fclose(pfile);
     return 0;
 }
-// 获取根证书,在线优先，离线备用
+
 int get_hrk_cert(char *cert_file)
 {
     int  cmd_ret   = -1;
@@ -582,7 +565,7 @@ int get_hrk_cert(char *cert_file)
 
     return (int)cmd_ret;
 }
-// 获取并加载证书
+
 int load_hrk_file(char *filename,void *buff,size_t len){
     int ret;
 
@@ -595,7 +578,7 @@ int load_hrk_file(char *filename,void *buff,size_t len){
     ret = load_data_from_file(filename,buff,len);
     return ret;
 }
-// 获取HSK和CEK证书
+
 int get_hsk_cek_cert(char *cert_file,char *chip_id)
 {
     int  cmd_ret   = -1;
@@ -612,7 +595,7 @@ int get_hsk_cek_cert(char *cert_file,char *chip_id)
 
     return (int)cmd_ret;
 }
-// 获取并加载证书
+
 int load_hsk_cek_file(char *chip_id,void *hsk,size_t hsk_len,void *cek,size_t cek_len){
     int ret;
     struct {
@@ -637,7 +620,7 @@ int load_hsk_cek_file(char *chip_id,void *hsk,size_t hsk_len,void *cek,size_t ce
     memcpy(cek,&HCK_file.cek,cek_len);
     return 0;
 }
-// 证书链验证,按照 HRK -> HSK -> CEK -> PEK 的顺序
+
 int validate_cert_chain(struct csv_attestation_report *report){
     CSV_CERT_t cek;
     CHIP_ROOT_CERT_t hsk;
@@ -645,7 +628,7 @@ int validate_cert_chain(struct csv_attestation_report *report){
     CSV_CERT_t oca;
     int success = 0;
     int ret;
-    //  证书加载与有效性预检查
+
     do {
         ret = load_hrk_file(HRK_FILENAME,&hrk,sizeof(CHIP_ROOT_CERT_t));
         if(ret){
@@ -706,7 +689,6 @@ int validate_cert_chain(struct csv_attestation_report *report){
     }
 
     success = 0;
-    // 密码学签名验证
     do {
         ret = verify_hrk_cert_signature(&hrk);
         if(ret){
@@ -754,14 +736,14 @@ int validate_cert_chain(struct csv_attestation_report *report){
 
     return -1;
 }
-// 上层应用直接调用的总入口函数。它负责接收原始的证明报告，并协调整个验证流程
+
 int verify_attestation_report(unsigned char* report_buf, unsigned int buf_len, int verify_chain)
 {
     struct csv_attestation_report report;
     int ret = 0;
     int i   = 0;
     int j   = 0;
-    // 参数检查
+
     if (buf_len < sizeof(report)){
         logcat("The allocated length is too short to meet the generated report!\n");
         logcat("The length should not be less than %ld \n", sizeof(report));
@@ -774,11 +756,10 @@ int verify_attestation_report(unsigned char* report_buf, unsigned int buf_len, i
     }
 
     logcat("verify attestation report\n");
-    // 数据拷贝
+
     memcpy(&report, report_buf, sizeof(report));
 
     // retrieve mnonce, PEK cert and ChipId by report->anonce
-    // 解密报告核心数据 , 明报告中的一些敏感数据（如 mnonce, pek_cert, sn 等）在出厂时被一个由Hypervisor生成的随机数 report->anonce 进行了简单的XOR加密
     j = sizeof(report.user_data) / sizeof(uint32_t);
     for (i = 0; i < j; i++)
         ((uint32_t *)g_user_data)[i] = ((uint32_t *)report.user_data)[i] ^ report.anonce;
@@ -798,7 +779,7 @@ int verify_attestation_report(unsigned char* report_buf, unsigned int buf_len, i
     j = ((uint8_t *)&report.reserved2 - (uint8_t *)report.sn) / sizeof(uint32_t);
     for (i = 0; i < j; i++)
         ((uint32_t *)g_chip_id)[i] = ((uint32_t *)report.sn)[i] ^ report.anonce;
-    // 条件化的证书链验证
+
     if(verify_chain){
         logcat("\nValidate cert chain:\n");
         ret = validate_cert_chain(&report);
@@ -807,7 +788,7 @@ int verify_attestation_report(unsigned char* report_buf, unsigned int buf_len, i
             return -1;
         }
     }
-    // 最终报告签名验证
+
     logcat("verify report\n");
     ret = csv_attestation_report_verify(&report);
 
@@ -816,12 +797,11 @@ int verify_attestation_report(unsigned char* report_buf, unsigned int buf_len, i
 
 
 /* get random number with len bytes */
-// 硬件随机数生成
 int generate_rand64_num(unsigned long long *buf)
 {
     return _rdrand64_step(buf);
 }
-// 生成任意指定 len 长度的随机字节序列
+
 int TCM_GetRandom(uint8_t *buf, uint32_t len)
 {
     uint32_t ret, temp_len, i;
@@ -857,7 +837,6 @@ int TCM_GetRandom(uint8_t *buf, uint32_t len)
 
 
 /* get the current virtual machine status */
-// 获取虚拟机的可信状态
 int csv_get_status(uint32_t *status)
 {
     int ret;
@@ -964,7 +943,7 @@ finish:
 
     return ret;
 }
-// 密钥导出
+
 int  save_csv_pubkey_to_pem_file(ecc_pubkey_t *pubkey, char *pemfile)
 {
     int ret = -1;

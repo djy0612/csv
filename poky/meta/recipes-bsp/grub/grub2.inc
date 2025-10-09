@@ -47,7 +47,7 @@ GRUBPLATFORM:arm = "efi"
 GRUBPLATFORM:aarch64 = "efi"
 GRUBPLATFORM:riscv32 = "efi"
 GRUBPLATFORM:riscv64 = "efi"
-GRUBPLATFORM ??= "pc"
+GRUBPLATFORM ??= "efi"
 
 inherit autotools gettext texinfo pkgconfig
 

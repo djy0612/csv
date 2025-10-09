@@ -31,7 +31,7 @@ ra-rpc = { workspace = true, features = ["client"] }
 ra-tls.workspace = true
 dstack-gateway-rpc.workspace = true
 tdx-attest.workspace = true
-csv-attest.workspace = true  # 新增
+csv-attest = { workspace = true, optional = true }  # 可选依赖
 host-api = { workspace = true, features = ["client"] }
 cmd_lib.workspace = true
 toml.workspace = true
@@ -46,6 +46,10 @@ serde_yaml2.workspace = true
 bollard.workspace = true
 sodiumbox.workspace = true
 libc.workspace = true
+
+[features]
+default = []
+csv = ["csv-attest"]
 
 [dev-dependencies]
 rand.workspace = true

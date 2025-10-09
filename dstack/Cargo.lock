@@ -1561,6 +1561,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "csv-attest"
+version = "0.5.3"
+dependencies = [
+ "anyhow",
+ "cc",
+ "cc-eventlog",
+ "csv-attest-sys",
+ "fs-err",
+ "num_enum",
+ "pkg-config",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.12",
+]
+
+[[package]]
+name = "csv-attest-sys"
+version = "0.5.3"
+dependencies = [
+ "bindgen 0.71.1",
+ "cc",
+ "libc",
+]
+
+[[package]]
 name = "ct_monitor"
 version = "0.5.3"
 dependencies = [
@@ -2185,6 +2210,7 @@ dependencies = [
  "cert-client",
  "clap",
  "cmd_lib",
+ "csv-attest",
  "curve25519-dalek",
  "dcap-qvl",
  "dstack-gateway-rpc",
@@ -4355,6 +4381,12 @@ dependencies = [
  "der",
  "spki",
 ]
+
+[[package]]
+name = "pkg-config"
+version = "0.3.32"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
 
 [[package]]
 name = "poly1305"

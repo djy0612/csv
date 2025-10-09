@@ -19,7 +19,7 @@ int ioctl_get_sealing_key(unsigned char* key_buf, unsigned int buf_len)
     int ret, i, j;
     struct csv_attestation_report report = {0};
     uint8_t  nonce[GUEST_ATTESTATION_NONCE_SIZE] = {0};
-    // 参数检查
+
     if (buf_len < sizeof(report.reserved2)){
         logcat("The allocated length is too short to meet the sealing key!\n");
         logcat("The length should not be less than %ld \n", sizeof(report.reserved2));
@@ -30,15 +30,15 @@ int ioctl_get_sealing_key(unsigned char* key_buf, unsigned int buf_len)
         logcat("allocate memory failed\n");
         return -1;
     }
-    // Nonce生成
+
     gen_random_bytes(nonce, GUEST_ATTESTATION_NONCE_SIZE);
-    // 通过 ioctl 获取报告
+
     ret = get_attestation_report_ioctl(&report, nonce, GUEST_ATTESTATION_NONCE_SIZE);
     if (ret) {
         logcat("get attestation report fail\n");
         return -1;
     }
-    // 完整性校验
+
     ret = verify_session_mac(&report);
     if (ret) {
         logcat("report hmac verify fail\n");
@@ -48,7 +48,7 @@ int ioctl_get_sealing_key(unsigned char* key_buf, unsigned int buf_len)
     j = GUEST_ATTESTATION_NONCE_SIZE / sizeof(uint32_t);
     for (i = 0; i < j; i++)
          ((uint32_t *)r_mnonce)[i] = ((uint32_t *)report.mnonce)[i] ^ report.anonce;
-    // 比较mnonce是否一致
+
     ret = memcmp(nonce, r_mnonce, GUEST_ATTESTATION_NONCE_SIZE);
     if (ret) {
         logcat("mnonce is different\n");
@@ -56,7 +56,7 @@ int ioctl_get_sealing_key(unsigned char* key_buf, unsigned int buf_len)
         csv_data_dump("r_mnonce", r_mnonce, GUEST_ATTESTATION_NONCE_SIZE);
         return -1;
     }
-    // 提取密钥
+
     memcpy(key_buf, report.reserved2, sizeof(report.reserved2));
 
     return 0;

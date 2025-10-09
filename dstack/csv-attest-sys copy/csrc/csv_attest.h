@@ -8,7 +8,7 @@
 extern "C" {
 #endif
 
-// 常量定义
+// 常量定义 - 与官方代码保持一致
 #define GUEST_ATTESTATION_NONCE_SIZE 16
 #define GUEST_ATTESTATION_DATA_SIZE 64
 #define HASH_LEN 32
@@ -22,6 +22,42 @@ extern "C" {
 #define SIZE_INT32 4
 #define ATTESTATION_REPORT_SIGNED_SIZE 180
 
+// 证书相关常量
+#define KEY_USAGE_TYPE_HRK 0
+#define KEY_USAGE_TYPE_HSK 0x13
+#define KEY_USAGE_TYPE_OCA 0x1001
+#define KEY_USAGE_TYPE_PEK 0x1002
+#define KEY_USAGE_TYPE_CEK 0x1004
+#define KEY_USAGE_TYPE_INVALID 0x1000
+
+#define CURVE_ID_TYPE_P256 0x1
+#define CURVE_ID_TYPE_P384 0x2
+#define CURVE_ID_TYPE_SM2_256 0x3
+
+// IOCTL相关定义
+#define CSV_GUEST_IOC_TYPE 'D'
+#define GET_ATTESTATION_REPORT _IOWR(CSV_GUEST_IOC_TYPE, 1, struct csv_guest_mem)
+
+// Hypercall定义
+#define KVM_HC_VM_ATTESTATION 100
+
+// 证书下载地址
+#define HRK_CERT_SITE "https://cert.hygon.cn/hrk"
+#define KDS_CERT_SITE "https://cert.hygon.cn/hsk_cek?snumber="
+
+// 文件名定义
+#define HRK_FILENAME "./hrk.cert"
+#define HSK_FILENAME "./hsk.cert"
+#define CEK_FILENAME "./cek.cert"
+#define HSK_CEK_FILENAME "hsk_cek.cert"
+#define ATTESTATION_REPORT_FILE "./report.cert"
+#define ATTESTATION_NONCE_FILE "./nonce.bin"
+
+// 页面相关常量
+#define PAGE_SHIFT 12
+#define PAGE_SIZE (1 << PAGE_SHIFT)
+#define PAGEMAP_LEN 8
+
 // 错误码定义
 #define CSV_SUCCESS 0
 #define CSV_ERROR_INVALID_PARAM -1
@@ -31,129 +67,137 @@ extern "C" {
 #define CSV_ERROR_VERIFICATION_FAILED -5
 #define CSV_ERROR_CERT_CHAIN_FAILED -6
 
-// 数据结构定义
-typedef struct {
+// 数据结构定义 - 与官方代码保持一致
+typedef struct _hash_block_u {
     unsigned char block[HASH_LEN];
 } hash_block_u;
 
-typedef struct {
+typedef struct _hash_block {
     uint8_t block[HASH_BLOCK_LEN];
-} hash_block_t;
+} __attribute__ ((packed)) hash_block_t;
 
-typedef struct {
+typedef struct _chip_key_id {
     uint8_t id[16];
-} chip_key_id_t;
+} __attribute__ ((packed)) chip_key_id_t;
 
-typedef struct {
+typedef struct _userid_u {
     unsigned short len;
     unsigned char uid[256 - sizeof(unsigned short)];
 } __attribute__ ((packed)) userid_u;
 
-typedef struct {
+typedef struct _ecc_pubkey {
     uint32_t curve_id;
     uint32_t Qx[ECC_POINT_SIZE / SIZE_INT32];
     uint32_t Qy[ECC_POINT_SIZE / SIZE_INT32];
     uint32_t user_id[256 / SIZE_INT32];
 } __attribute__ ((packed)) ecc_pubkey_t;
 
-typedef struct {
+typedef struct _ecc_signature {
     uint32_t sig_r[ECC_POINT_SIZE / SIZE_INT32];
     uint32_t sig_s[ECC_POINT_SIZE / SIZE_INT32];
 } __attribute__ ((packed)) ecc_signature_t;
 
-typedef struct {
-    uint32_t version;
+// HRK证书结构体 - 与官方代码保持一致
+struct _hygon_root_cert {
+    uint32_t      version;
     chip_key_id_t key_id;
     chip_key_id_t certifying_id;
-    uint32_t key_usage;
-    uint32_t reserved1[24 / SIZE_INT32];
+    uint32_t      key_usage;
+    uint32_t      reserved1[24 / SIZE_INT32];
     union {
-        uint32_t pubkey[(SIZE_INT32 + ECC_POINT_SIZE * 2 + 256) / SIZE_INT32];
+        uint32_t     pubkey[(SIZE_INT32 + ECC_POINT_SIZE * 2 + 256) / SIZE_INT32];
         ecc_pubkey_t ecc_pubkey;
     };
     uint32_t reserved2[108 / SIZE_INT32];
     union {
-        uint32_t signature[ECC_POINT_SIZE * 2 / SIZE_INT32];
+        uint32_t        signature[ECC_POINT_SIZE * 2 / SIZE_INT32];
         ecc_signature_t ecc_sig;
     };
     uint32_t reserved3[112 / SIZE_INT32];
-} __attribute__((packed)) hygon_root_cert_t;
+} __attribute__((packed));
 
-typedef struct {
+// CSV证书结构体 - 与官方代码保持一致
+struct _hygon_csv_cert {
     uint32_t version;
-    uint8_t api_major;
-    uint8_t api_minor;
-    uint8_t reserved1;
-    uint8_t reserved2;
+    uint8_t  api_major;
+    uint8_t  api_minor;
+    uint8_t  reserved1;
+    uint8_t  reserved2;
     uint32_t pubkey_usage;
     uint32_t pubkey_algo;
     union {
-        uint32_t pubkey[(SIZE_INT32 + ECC_POINT_SIZE * 2 + 256) / SIZE_INT32];
+        uint32_t     pubkey[(SIZE_INT32 + ECC_POINT_SIZE * 2 + 256) / SIZE_INT32];
         ecc_pubkey_t ecc_pubkey;
     };
     uint32_t reserved3[624 / SIZE_INT32];
     uint32_t sig1_usage;
     uint32_t sig1_algo;
     union {
-        uint32_t sig1[ECC_POINT_SIZE * 2 / SIZE_INT32];
+        uint32_t        sig1[ECC_POINT_SIZE * 2 / SIZE_INT32];
         ecc_signature_t ecc_sig1;
     };
     uint32_t reserved4[368 / SIZE_INT32];
     uint32_t sig2_usage;
     uint32_t sig2_algo;
     union {
-        uint32_t sig2[ECC_POINT_SIZE * 2 / SIZE_INT32];
+        uint32_t        sig2[ECC_POINT_SIZE * 2 / SIZE_INT32];
         ecc_signature_t ecc_sig2;
     };
     uint32_t reserved5[368 / SIZE_INT32];
-} __attribute__((packed)) hygon_csv_cert_t;
+} __attribute__((packed));
 
-typedef hygon_root_cert_t chip_root_cert_t;
-typedef hygon_csv_cert_t csv_cert_t;
+// 类型别名 - 与官方代码保持一致
+typedef struct _hygon_root_cert chip_root_cert_t;
+typedef struct _hygon_csv_cert csv_cert_t;
+typedef struct csv_attestation_report csv_attestation_report_t;
+typedef uint32_t curve_id_t;
 
-typedef struct {
-    hash_block_t user_pubkey_digest;
-    uint8_t vm_id[VM_ID_SIZE];
-    uint8_t vm_version[VM_VERSION_SIZE];
-    uint8_t user_data[USER_DATA_SIZE];
-    uint8_t mnonce[GUEST_ATTESTATION_NONCE_SIZE];
-    hash_block_t measure;
-    uint32_t policy;
-    uint32_t sig_usage;
-    uint32_t sig_algo;
-    uint32_t anonce;
+// 证明报告结构体 - 与官方代码完全一致
+struct csv_attestation_report {
+    hash_block_t user_pubkey_digest;      // 用户公钥摘要（哈希）
+    uint8_t     vm_id[VM_ID_SIZE];        // 虚拟机ID
+    uint8_t     vm_version[VM_VERSION_SIZE]; // 虚拟机版本
+    uint8_t     user_data[USER_DATA_SIZE];   // 用户自定义数据
+    uint8_t     mnonce[GUEST_ATTESTATION_NONCE_SIZE]; // 随机数（nonce）
+    hash_block_t measure;                 // 虚拟机度量值（hash）
+    uint32_t    policy;                   // 策略信息
+    uint32_t    sig_usage;                // 签名用途
+    uint32_t    sig_algo;                 // 签名算法
+    uint32_t    anonce;                   // 另一个随机数
     union {
         uint32_t sig1[ECC_POINT_SIZE*2/SIZE_INT32];
-        ecc_signature_t ecc_sig1;
+        ecc_signature_t ecc_sig1;         // 签名1（ECC签名）
     };
-    csv_cert_t pek_cert;
-    uint8_t sn[SN_LEN];
-    uint8_t reserved2[32];
-    hash_block_u mac;
-} csv_attestation_report_t;
+    csv_cert_t  pek_cert;                 // PEK证书（平台加密密钥证书）
+    uint8_t     sn[SN_LEN];               // 序列号
+    uint8_t     reserved2[32];            // 保留字段
+    hash_block_u mac;                     // MAC 校验值
+};
 
-typedef struct {
+// 用户数据结构体 - 与官方代码保持一致
+struct csv_attestation_user_data {
     uint8_t data[GUEST_ATTESTATION_DATA_SIZE];
     uint8_t mnonce[GUEST_ATTESTATION_NONCE_SIZE];
     hash_block_u hash;
-} csv_attestation_user_data_t;
+};
 
-typedef struct {
+// IOCTL参数结构体 - 与官方代码保持一致
+struct csv_guest_mem {
     unsigned long va;
     int size;
-} csv_guest_mem_t;
+};
 
-// 辅助数据结构
-typedef struct {
-    uint32_t curve_id;
+// 辅助数据结构体
+struct ecc_point_q {
+    uint32_t     curve_id;
     unsigned char Qx[ECC_LEN];
     unsigned char Qy[ECC_LEN];
-} ecc_point_q;
+};
 
-typedef struct {
+struct ecdsa_sign {
     unsigned char r[ECC_LEN];
     unsigned char s[ECC_LEN];
-} ecdsa_sign;
+};
 
 // 函数声明
 int csv_get_attestation_report_ioctl(unsigned char* report_buf, unsigned int buf_len,

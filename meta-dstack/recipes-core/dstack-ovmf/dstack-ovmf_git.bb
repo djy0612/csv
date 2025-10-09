@@ -51,7 +51,7 @@ PARALLEL_MAKE = ""
 
 S = "${WORKDIR}/git"
 
-DEPENDS = "nasm-native acpica-native ovmf-native util-linux-native grub-efi-native"
+DEPENDS = "nasm-native acpica-native ovmf-native util-linux-native grub-native mtools-native dosfstools-native"
 
 EDK_TOOLS_DIR="edk2_basetools"
 
@@ -206,16 +206,19 @@ do_compile:class-target() {
         rm -rf ${S}/Build/AmdSev
         ${S}/OvmfPkg/build.sh -p ${S}/OvmfPkg/AmdSev/AmdSevX64.dsc $PARALLEL_JOBS -a $OVMF_ARCH -b RELEASE -t ${FIXED_GCCVER} ${PACKAGECONFIG_CONFARGS}
         ln ${build_dir}/FV/OVMF.fd ${WORKDIR}/ovmf/ovmf.fd
-        ln ${build_dir}/FV/OVMF_CODE.fd ${WORKDIR}/ovmf/ovmf.code.fd
-        ln ${build_dir}/FV/OVMF_VARS.fd ${WORKDIR}/ovmf/ovmf.vars.fd
-        ln ${build_dir}/${OVMF_ARCH}/Shell.efi ${WORKDIR}/ovmf/
+        # AmdSev build doesn't generate OVMF_CODE.fd and OVMF_VARS.fd
+        # ln ${build_dir}/FV/OVMF_CODE.fd ${WORKDIR}/ovmf/ovmf.code.fd
+        # ln ${build_dir}/FV/OVMF_VARS.fd ${WORKDIR}/ovmf/ovmf.vars.fd
+        # AmdSev build doesn't include Shell.efi
+        # ln ${build_dir}/${OVMF_ARCH}/Shell.efi ${WORKDIR}/ovmf/
 
         if ${@bb.utils.contains('PACKAGECONFIG', 'secureboot', 'true', 'false', d)}; then
             bbnote "Building AmdSev with Secure Boot."
             rm -rf ${S}/Build/AmdSev
             ${S}/OvmfPkg/build.sh -p ${S}/OvmfPkg/AmdSev/AmdSevX64.dsc $PARALLEL_JOBS -a $OVMF_ARCH -b RELEASE -t ${FIXED_GCCVER} ${PACKAGECONFIG_CONFARGS} ${OVMF_SECURE_BOOT_FLAGS}
             ln ${build_dir}/FV/OVMF.fd ${WORKDIR}/ovmf/ovmf.secboot.fd
-            ln ${build_dir}/FV/OVMF_CODE.fd ${WORKDIR}/ovmf/ovmf.secboot.code.fd
+            # AmdSev build doesn't generate OVMF_CODE.fd
+            # ln ${build_dir}/FV/OVMF_CODE.fd ${WORKDIR}/ovmf/ovmf.secboot.code.fd
             ln ${build_dir}/${OVMF_ARCH}/EnrollDefaultKeys.efi ${WORKDIR}/ovmf/
         fi
     else
@@ -251,7 +254,16 @@ do_install:class-target() {
     # bootx64/ia32.efi because then it can be started even when the
     # firmware itself does not contain it.
     install -d ${D}/efi/boot
-    install ${WORKDIR}/ovmf/Shell.efi ${D}/efi/boot/boot${@ "ia32" if "${TARGET_ARCH}" != "x86_64" else "x64"}.efi
+    
+    # Different firmware types for different machines
+    if ${@bb.utils.contains_any('MACHINE', ['sev-snp', 'csv'], 'true', 'false', d)}; then
+        # AmdSev build doesn't include Shell.efi, skip installation
+        bbnote "AmdSev build doesn't include Shell.efi, skipping installation"
+    else
+        # IntelTdx build includes Shell.efi
+        install ${WORKDIR}/ovmf/Shell.efi ${D}/efi/boot/boot${@ "ia32" if "${TARGET_ARCH}" != "x86_64" else "x64"}.efi
+    fi
+    
     if ${@bb.utils.contains('PACKAGECONFIG', 'secureboot', 'true', 'false', d)}; then
         install ${WORKDIR}/ovmf/EnrollDefaultKeys.efi ${D}
     fi
@@ -277,15 +289,33 @@ do_deploy() {
 }
 do_deploy:class-target() {
     # For use with "runqemu ovmf".
-    for i in \
-        ovmf \
-        ovmf.code \
-        ovmf.vars \
-        ${@bb.utils.contains('PACKAGECONFIG', 'secureboot', 'ovmf.secboot ovmf.secboot.code', '', d)} \
-        ; do
-        cp ${WORKDIR}/ovmf/$i.fd ${DEPLOYDIR}/
-        qemu-img convert -f raw -O qcow2 ${WORKDIR}/ovmf/$i.fd ${DEPLOYDIR}/$i.qcow2
-    done
+    # Different firmware types for different machines
+    if ${@bb.utils.contains_any('MACHINE', ['sev-snp', 'csv'], 'true', 'false', d)}; then
+        # AmdSev build only generates ovmf.fd
+        for i in ovmf; do
+            cp ${WORKDIR}/ovmf/$i.fd ${DEPLOYDIR}/
+            qemu-img convert -f raw -O qcow2 ${WORKDIR}/ovmf/$i.fd ${DEPLOYDIR}/$i.qcow2
+        done
+        
+        if ${@bb.utils.contains('PACKAGECONFIG', 'secureboot', 'true', 'false', d)}; then
+            # AmdSev secure boot only generates ovmf.secboot.fd
+            for i in ovmf.secboot; do
+                cp ${WORKDIR}/ovmf/$i.fd ${DEPLOYDIR}/
+                qemu-img convert -f raw -O qcow2 ${WORKDIR}/ovmf/$i.fd ${DEPLOYDIR}/$i.qcow2
+            done
+        fi
+    else
+        # IntelTdx build generates all files
+        for i in \
+            ovmf \
+            ovmf.code \
+            ovmf.vars \
+            ${@bb.utils.contains('PACKAGECONFIG', 'secureboot', 'ovmf.secboot ovmf.secboot.code', '', d)} \
+            ; do
+            cp ${WORKDIR}/ovmf/$i.fd ${DEPLOYDIR}/
+            qemu-img convert -f raw -O qcow2 ${WORKDIR}/ovmf/$i.fd ${DEPLOYDIR}/$i.qcow2
+        done
+    fi
 
     if ${@bb.utils.contains('PACKAGECONFIG', 'secureboot', 'true', 'false', d)}; then
         # Create a test Platform Key and first Key Exchange Key to use with EnrollDefaultKeys

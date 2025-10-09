@@ -22,8 +22,14 @@ do_install:append () {
     # Avoid conflicts with the EFI package for systems such as arm64 where we
     # need to build grub and grub-efi but only EFI is supported by removing EFI
     # from this package.
-    rm -rf ${D}${libdir}/grub/*-efi/
-    rmdir --ignore-fail-on-non-empty ${D}${libdir}/grub ${D}${libdir}
+    # For native builds, we need to keep EFI modules for grub-mkimage to work
+    if [ "${CLASSOVERRIDE}" = "class-native" ]; then
+        # Keep EFI modules for native builds
+        :
+    else
+        rm -rf ${D}${libdir}/grub/*-efi/
+        rmdir --ignore-fail-on-non-empty ${D}${libdir}/grub ${D}${libdir}
+    fi
 
     install -d ${D}${sysconfdir}/grub.d
     # Remove build host references...

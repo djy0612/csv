@@ -34,15 +34,25 @@ fi
 BB_BUILD_DIR=$(realpath ${BB_BUILD_DIR:-build})
 DIST_DIR=$(realpath ${DIST_DIR:-${BB_BUILD_DIR}/dist})
 
-IMG_DIR=${BB_BUILD_DIR}/tmp/deploy/images/tdx
+# Detect machine type from available directories
+if [ -d "${BB_BUILD_DIR}/tmp/deploy/images/csv" ]; then
+    MACHINE_TYPE="csv"
+elif [ -d "${BB_BUILD_DIR}/tmp/deploy/images/tdx" ]; then
+    MACHINE_TYPE="tdx"
+else
+    echo "Error: Cannot detect machine type. No images directory found for csv or tdx."
+    exit 1
+fi
+
+IMG_DIR=${BB_BUILD_DIR}/tmp/deploy/images/${MACHINE_TYPE}
 ROOTFS_IMAGE_NAME=${DIST_NAME}-rootfs
 
 INITRAMFS_IMAGE=${IMG_DIR}/dstack-initramfs.cpio.gz
-ROOTFS_IMAGE=${IMG_DIR}/${ROOTFS_IMAGE_NAME}-tdx.squashfs.verity
+ROOTFS_IMAGE=${IMG_DIR}/${ROOTFS_IMAGE_NAME}-${MACHINE_TYPE}.squashfs.verity
 KERNEL_IMAGE=${IMG_DIR}/bzImage
 OVMF_FIRMWARE=${IMG_DIR}/ovmf.fd
 # Always use the work-shared directory which has the correct verity env
-VERITY_ENV_FILE=${BB_BUILD_DIR}/tmp/work-shared/tdx/dm-verity/${ROOTFS_IMAGE_NAME}.squashfs.verity.env
+VERITY_ENV_FILE=${BB_BUILD_DIR}/tmp/work-shared/${MACHINE_TYPE}/dm-verity/${ROOTFS_IMAGE_NAME}.squashfs.verity.env
 echo "Loading verity env from ${VERITY_ENV_FILE}"
 source ${VERITY_ENV_FILE}
 

@@ -12,12 +12,12 @@ STATIC_CFLAGS := -Wl,-rpath,$(LIBDIR),-Bstatic
 SHARED_CFLAGS := -Wl,-rpath,$(LIBDIR),-Bdynamic
 OS := $(shell grep -i '^name=' /etc/os-release | awk -F '=' '{print $$2}' | tr -d '\"' | tr "[:upper:]" "[:lower:]")
 $(info Operating System: $(OS))
-# 创建动态链接库 libcsv.so
+
 dynamic_csv_sdk:
 	gcc -Wall $(CFLAGS) -c -fpic csv_sdk/*.c
 	gcc -Wall $(CFLAGS) -o libcsv.so -shared *.o $(STATIC_CFLAGS) -lcrypto $(SHARED_CFLAGS) -ldl -lpthread
 	rm *.o
-# 创建静态链接库 libcsv.a
+
 static_csv_sdk:
 	gcc -Wall $(CFLAGS) -c csv_sdk/*.c
 	ar -r libcsv.a *.o

@@ -27,7 +27,7 @@ int get_attestation_report_ioctl(struct csv_attestation_report *report,
     long ret;
     int fd = 0;
     struct csv_guest_mem mem = {0};
-    // 参数检查
+
     if (!report || !nonce) {
         logcat("NULL pointer for report\n");
         return -1;
@@ -61,7 +61,7 @@ int get_attestation_report_ioctl(struct csv_attestation_report *report,
     csv_data_dump("mnonce", user_data->mnonce, GUEST_ATTESTATION_NONCE_SIZE);
     csv_data_dump("hash", (unsigned char *)&user_data->hash, sizeof(hash_block_u));
     logcat("\n\n");
-    // 与驱动交互
+
     fd = open("/dev/csv-guest",O_RDWR);
     if(fd < 0)
     {

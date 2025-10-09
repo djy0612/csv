@@ -13,10 +13,11 @@ S = "${WORKDIR}/dstack"
 
 RDEPENDS:${PN} += "bash"
 
-DEPENDS += "rsync-native"
+DEPENDS += "rsync-native openssl-native"
 
-# Ensure rsync-native is built before unpack runs
+# Ensure rsync-native and openssl-native are built before unpack runs
 do_unpack[depends] += "rsync-native:do_populate_sysroot"
+do_unpack[depends] += "openssl-native:do_populate_sysroot"
 
 DSTACK_SERVICES = "dstack-guest-agent.service dstack-prepare.service app-compose.service"
 SYSTEMD_PACKAGES = "${@bb.utils.contains('DISTRO_FEATURES','systemd','${PN}','',d)}"
@@ -25,7 +26,6 @@ SYSTEMD_AUTO_ENABLE:${PN} = "enable"
 EXTRA_CARGO_FLAGS = "-p dstack-guest-agent -p dstack-util"
 CARGO_FEATURES:append:tdx = " tdx"
 CARGO_FEATURES:append:csv = " csv"
-
 inherit cargo_bin
 
 do_unpack() {
