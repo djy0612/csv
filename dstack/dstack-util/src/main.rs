@@ -21,7 +21,7 @@ use std::{
     path::PathBuf,
 };
 use system_setup::{cmd_sys_setup, SetupArgs};
-use tdx_attest as att;
+use csv_attest as att;
 use utils::AppKeys;
 
 mod crypto;
@@ -191,11 +191,27 @@ struct ComposeConfig {
 struct ComposeService {}
 
 fn cmd_quote() -> Result<()> {
-    let mut report_data = [0; 64];
-    io::stdin()
-        .read_exact(&mut report_data)
-        .context("Failed to read report data")?;
-    let (_key_id, quote) = att::get_quote(&report_data, None).context("Failed to get quote")?;
+    // 读取 report_data（CSV 驱动不会使用此参数）
+    let mut _report_data = [0; 64];
+    let _ = io::stdin().read_exact(&mut _report_data);
+
+    let mut client = csv_attest::CsvAttestationClient::new();
+    client.generate_nonce().context("Failed to generate nonce")?;
+    let report = client
+        .get_attestation_report_ioctl()
+        .or_else(|_| client.get_attestation_report_vmmcall())
+        .context("Failed to get CSV attestation report")?;
+
+    let size = core::mem::size_of_val(&report);
+    let mut quote = Vec::with_capacity(size);
+    unsafe {
+        quote.set_len(size);
+        core::ptr::copy_nonoverlapping(
+            &report as *const _ as *const u8,
+            quote.as_mut_ptr(),
+            size,
+        );
+    }
     io::stdout()
         .write_all(&quote)
         .context("Failed to write quote")?;
@@ -204,7 +220,7 @@ fn cmd_quote() -> Result<()> {
 
 fn cmd_extend(extend_args: ExtendArgs) -> Result<()> {
     let payload = hex::decode(&extend_args.payload).context("Failed to decode payload")?;
-    att::extend_rtmr3(&extend_args.event, &payload).context("Failed to extend RTMR")
+    att::rtmr::extend_rtmr3(&extend_args.event, &payload).context("Failed to extend RTMR")
 }
 
 fn cmd_report() -> Result<()> {
@@ -212,10 +228,10 @@ fn cmd_report() -> Result<()> {
     io::stdin()
         .read_exact(&mut report_data)
         .context("Failed to read report data")?;
-    let report = att::get_report(&report_data).context("Failed to get report")?;
+    // CSV: 无 get_report，直接输出传入的 report_data 作为占位
     io::stdout()
-        .write_all(&report.0)
-        .context("Failed to write report")?;
+        .write_all(&report_data)
+        .context("Failed to write report data")?;
     Ok(())
 }
 
@@ -312,8 +328,24 @@ fn cmd_gen_ca_cert(args: GenCaCertArgs) -> Result<()> {
     let key = KeyPair::generate_for(&PKCS_ECDSA_P256_SHA256)?;
     let pubkey = key.public_key_der();
     let report_data = QuoteContentType::KmsRootCa.to_report_data(&pubkey);
-    let (_, quote) = att::get_quote(&report_data, None).context("Failed to get quote")?;
-    let event_logs = att::eventlog::read_event_logs().context("Failed to read event logs")?;
+    // CSV: 获取原始报告字节
+    let mut client = csv_attest::CsvAttestationClient::new();
+    client.generate_nonce().context("Failed to generate nonce")?;
+    let report = client
+        .get_attestation_report_ioctl()
+        .or_else(|_| client.get_attestation_report_vmmcall())
+        .context("Failed to get CSV attestation report")?;
+    let size = core::mem::size_of_val(&report);
+    let mut quote = Vec::with_capacity(size);
+    unsafe {
+        quote.set_len(size);
+        core::ptr::copy_nonoverlapping(
+            &report as *const _ as *const u8,
+            quote.as_mut_ptr(),
+            size,
+        );
+    }
+    let event_logs = cc_eventlog::read_event_logs().context("Failed to read event logs1")?;
     let event_log = serde_json::to_vec(&event_logs).context("Failed to serialize event logs")?;
 
     let req = CertRequest::builder()
@@ -455,12 +487,26 @@ fn make_app_keys(
     use ra_tls::cert::CertRequest;
     let pubkey = app_key.public_key_der();
     let report_data = QuoteContentType::RaTlsCert.to_report_data(&pubkey);
-    //let (_, quote) = att::get_quote(&report_data, None).context("Failed to get quote")?;
-    let quote = create_mock_quote(&report_data);
+    // 使用真实 CSV 报告
+    let mut csv_client = csv_attest::CsvAttestationClient::new();
+    csv_client.generate_nonce().context("Failed to generate nonce")?;
+    let csv_report = csv_client
+        .get_attestation_report_ioctl()
+        .or_else(|_| csv_client.get_attestation_report_vmmcall())
+        .context("Failed to get CSV attestation report")?;
+    let size = core::mem::size_of_val(&csv_report);
+    let mut quote = Vec::with_capacity(size);
+    unsafe {
+        quote.set_len(size);
+        core::ptr::copy_nonoverlapping(
+            &csv_report as *const _ as *const u8,
+            quote.as_mut_ptr(),
+            size,
+        );
+    }
 
-    // 使用模拟 event_logs 替代真实 event_logs
-    //let event_logs = att::eventlog::read_event_logs().context("Failed to read event logs")?;
-    let event_logs = create_mock_event_logs(); 
+    // 使用真实事件日志
+    let event_logs = cc_eventlog::read_event_logs().context("Failed to read event logs")?;
     let event_log = serde_json::to_vec(&event_logs).context("Failed to serialize event logs")?;
     let req = CertRequest::builder()
         .subject("App Root Cert")
@@ -603,8 +649,8 @@ async fn main() -> Result<()> {
         Commands::Quote => cmd_quote()?,
         Commands::Show => cmd_show_mrs()?,
         Commands::Extend(extend_args) => {
-            //cmd_extend(extend_args)?;
-            todo!("Extend command is currently disabled"); 
+            cmd_extend(extend_args)?;
+            //todo!("Extend command is currently disabled"); 
         }
         Commands::Hex(hex_args) => {
             cmd_hex(hex_args)?;

@@ -69,7 +69,7 @@ services:
         
         RUN cargo build --release -p dstack-kms --target x86_64-unknown-linux-musl
 
-        FROM alpine:latest
+        FROM debian:bookworm-slim
         COPY --from=kms-builder /app/dstack/target/x86_64-unknown-linux-musl/release/dstack-kms /usr/local/bin/dstack-kms
         COPY --from=kms-builder /app/dstack/kms/dstack-app/entrypoint.sh /entrypoint.sh
         COPY --from=dstack-mr-builder /usr/local/bin/dstack-mr /usr/local/bin/dstack-mr

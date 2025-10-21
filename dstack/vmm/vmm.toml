@@ -17,8 +17,8 @@ restrict = false
 
 [cvm]
 qemu_path = ""
-kms_urls = ["https://kms.dstack.ip-ddns.com:9201"]
-gateway_urls = ["https://gateway.dstack.ip-ddns.com:9202"]
+kms_urls = ["https://127.0.0.1:9201"]
+gateway_urls = ["https://127.0.0.1:9202"]
 # PCCS URL used by guest to verify the quote from local key provider
 pccs_url = ""
 docker_registry = ""
@@ -30,7 +30,7 @@ max_allocable_memory_in_mb = 100_000 # MB
 # Enable QMP socket
 qmp_socket = false
 # The user to run the VM as. If empty, the VM will be run as the current user.
-user = ""
+user = "root"
 use_mrconfigid = true
 #use_mrconfigid = false
 
@@ -58,7 +58,7 @@ include = []
 allow_attach_all = true
 
 [gateway]
-base_domain = "dstack.ip-ddns.com"
+base_domain = "020919.xyz"
 port = 9204
 agent_port = 9206
 

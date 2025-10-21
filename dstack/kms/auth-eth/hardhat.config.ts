@@ -64,7 +64,7 @@ const config: HardhatUserConfig = {
 export default config;
 
 // Contract addresses from environment
-const KMS_CONTRACT_ADDRESS = process.env.KMS_CONTRACT_ADDRESS || "0x43ca3D2C94be00692D207C6A1e60D8B325c6f12f";
+const KMS_CONTRACT_ADDRESS = process.env.KMS_CONTRACT_ADDRESS || "0xC469e7aE4aD962c30c7111dc580B4adbc7E914DD";
 
 async function waitTx(tx: any) {
   console.log(`Waiting for transaction ${tx.hash} to be confirmed...`);

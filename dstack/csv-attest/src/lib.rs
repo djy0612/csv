@@ -1,5 +1,7 @@
 use csv_attest_sys::*;
 
+pub mod rtmr;
+
 /// CSV 证明报告错误类型
 #[derive(Debug, thiserror::Error)]
 pub enum CsvAttestationError {
@@ -197,3 +199,10 @@ pub fn verify_attestation_report(report_data: &mut [u8], verify_chain: bool) -> 
         Err(ret.into())
     }
 }
+
+// 重新导出 RTMR 相关功能
+pub use rtmr::{
+    RtmrManager, RtmrValue,
+    RTMR_COUNT, RTMR_SIZE,
+    extend_rtmr3, get_rtmr_value, get_all_rtmr_values,
+};

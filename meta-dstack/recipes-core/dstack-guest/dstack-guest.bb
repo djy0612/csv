@@ -24,13 +24,16 @@ SYSTEMD_PACKAGES = "${@bb.utils.contains('DISTRO_FEATURES','systemd','${PN}','',
 SYSTEMD_SERVICE:${PN} = "${@bb.utils.contains('DISTRO_FEATURES','systemd','${DSTACK_SERVICES}','',d)}"
 SYSTEMD_AUTO_ENABLE:${PN} = "enable"
 EXTRA_CARGO_FLAGS = "-p dstack-guest-agent -p dstack-util"
-CARGO_FEATURES:append:tdx = " tdx"
+#CARGO_FEATURES:append:tdx = " tdx"
 CARGO_FEATURES:append:csv = " csv"
 inherit cargo_bin
 
 do_unpack() {
     mkdir -p ${S}
-    rsync -a --exclude="target" ${SRC_DIR}/ ${S}/
+    rsync -a --no-g --no-perms \
+        --exclude="target" \
+        --exclude="vmm-data/run/" \
+        ${SRC_DIR}/ ${S}/
     cp ${THISDIR}/files/docker-daemon.json ${S}/
 }
 

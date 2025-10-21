@@ -16,9 +16,11 @@ use dstack_types::{
 use fs_err as fs;
 use ra_rpc::client::{CertInfo, RaClient, RaClientConfig};
 use ra_tls::cert::generate_ra_cert;
+use sha2::{Digest as _, Sha384};
+use csv_attest::{self, RTMR_SIZE};
 use rand::Rng as _;
 use serde::{Deserialize, Serialize};
-use tdx_attest::extend_rtmr3;
+// CSV mode: RTMR extensions are handled via csv_attest when needed
 use tracing::{info, warn};
 
 use crate::{
@@ -205,7 +207,7 @@ fn truncate(s: &[u8], len: usize) -> &[u8] {
 fn emit_key_provider_info(provider_info: &KeyProviderInfo) -> Result<()> {
     info!("Key provider info: {provider_info:?}");
     let provider_info_json = serde_json::to_vec(&provider_info)?;
-    //extend_rtmr3("key-provider", &provider_info_json)?;
+    csv_attest::rtmr::extend_rtmr3("key-provider", &provider_info_json)?;
     Ok(())
 }
 
@@ -324,7 +326,7 @@ impl<'a> Stage0<'a> {
                     let kms_info = att
                         .decode_app_info(false)
                         .context("Failed to decode app_info")?;
-                    extend_rtmr3("mr-kms", &kms_info.mr_aggregated)
+                    csv_attest::rtmr::extend_rtmr3("mr-kms", &kms_info.mr_aggregated)
                         .context("Failed to extend mr-kms to RTMR3")?;
                 }
                 Ok(())
@@ -342,9 +344,9 @@ impl<'a> Stage0<'a> {
             })
             .await
             .context("Failed to get app key")?;
-        //info!("extend_rtmr3");    
-        //extend_rtmr3("os-image-hash", &response.os_image_hash)
-        //    .context("Failed to extend os-image-hash to RTMR3")?;
+        info!("extend_rtmr3");    
+        csv_attest::rtmr::extend_rtmr3("os-image-hash", &response.os_image_hash)
+            .context("Failed to extend os-image-hash to RTMR3")?;
 
         let (_, ca_pem) = x509_parser::pem::parse_x509_pem(tmp_ca.ca_cert.as_bytes())
             .context("Failed to parse ca cert")?;
@@ -511,11 +513,17 @@ impl<'a> Stage0<'a> {
             bail!("App upgrade is not supported without KMS");
         }
 
-        //extend_rtmr3("system-preparing", &[])?;
-        //extend_rtmr3("app-id", &instance_info.app_id)?;
-        //extend_rtmr3("compose-hash", &compose_hash)?;
-        //extend_rtmr3("instance-id", &instance_id)?;
-        //extend_rtmr3("boot-mr-done", &[])?;
+        // 写入关键事件到 RTMR3（CSV）
+        // system-preparing
+        csv_attest::rtmr::extend_rtmr3("system-preparing", &[])?;
+        // app-id
+        csv_attest::rtmr::extend_rtmr3("app-id", &instance_info.app_id)?;
+        // compose-hash
+        csv_attest::rtmr::extend_rtmr3("compose-hash", &compose_hash)?;
+        // instance-id
+        csv_attest::rtmr::extend_rtmr3("instance-id", &instance_info.instance_id)?;
+        // boot-mr-done
+        csv_attest::rtmr::extend_rtmr3("boot-mr-done", &[])?;
         Ok(AppInfo {
             instance_info,
             compose_hash,
@@ -539,7 +547,7 @@ impl<'a> Stage0<'a> {
         let kp_info = match &keys.key_provider {
             KeyProvider::None { .. } => KeyProviderInfo::new("none".into(), "".into()),
             KeyProvider::Local { mr, .. } => {
-                KeyProviderInfo::new("local-sgx".into(), hex::encode(mr))
+                KeyProviderInfo::new("local-csv".into(), hex::encode(mr))
             }
             KeyProvider::Kms { pubkey, .. } => {
                 KeyProviderInfo::new("kms".into(), hex::encode(pubkey))
@@ -579,7 +587,7 @@ impl<'a> Stage0<'a> {
                 &serde_json::to_string(&app_info.instance_info)?,
             )
             .await;
-        //extend_rtmr3("system-ready", &[])?;
+        csv_attest::rtmr::extend_rtmr3("system-ready", &[])?;
         self.vmm.notify_q("boot.progress", "data disk ready").await;
 
         //if !self.shared.app_compose.key_provider().is_kms() {

@@ -30,8 +30,8 @@ dstack-kms-rpc.workspace = true
 ra-rpc = { workspace = true, features = ["client"] }
 ra-tls.workspace = true
 dstack-gateway-rpc.workspace = true
-tdx-attest.workspace = true
 csv-attest = { workspace = true, optional = true }  # 可选依赖
+cc-eventlog.workspace = true
 host-api = { workspace = true, features = ["client"] }
 cmd_lib.workspace = true
 toml.workspace = true
@@ -48,7 +48,7 @@ sodiumbox.workspace = true
 libc.workspace = true
 
 [features]
-default = []
+default = ["csv"]
 csv = ["csv-attest"]
 
 [dev-dependencies]

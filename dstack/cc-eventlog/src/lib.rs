@@ -276,9 +276,7 @@ fn read_runtime_event_logs() -> Result<Vec<TdxEventLog>> {
 
 /// Read both boottime and runtime event logs.
 pub fn read_event_logs() -> Result<Vec<TdxEventLog>> {
-    let mut event_logs = EventLogs::decode_from_ccel_file()?.to_tdx_event_logs()?;
-    event_logs.extend(read_runtime_event_logs()?);
-    Ok(event_logs)
+    return read_runtime_event_logs();
 }
 
 #[cfg(test)]

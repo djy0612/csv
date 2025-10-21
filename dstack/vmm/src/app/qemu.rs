@@ -270,9 +270,10 @@ impl VmConfig {
                 workdir.qmp_socket().display()
             ));
         }
-        if let Some(bios) = &self.image.bios {
-            command.arg("-bios").arg(bios);
-        }
+        //if let Some(bios) = &self.image.bios {
+        //    command.arg("-bios").arg(bios);
+        //}
+        command.arg("-drive").arg("if=pflash,format=raw,unit=0,file=/opt/hygon/csv/OVMF_CODE.fd,readonly=on");
         // 启动配置
         command.arg("-kernel").arg(&self.image.kernel);
         command.arg("-initrd").arg(&self.image.initrd);
@@ -330,51 +331,11 @@ impl VmConfig {
         command.arg("-netdev").arg(netdev);
         command.arg("-device").arg("virtio-net-pci,netdev=net0");
 
-        command
-            .arg("-machine")
-            //.arg("q35,kernel-irqchip=split,confidential-guest-support=tdx,hpet=off");
-            .arg("q35,kernel-irqchip=split,hpet=off");
+        // CSV/SEV 机密计算支持
+        command.arg("-object").arg("sev-guest,id=sev0,policy=0x1,cbitpos=47,reduced-phys-bits=5");
+        command.arg("-machine").arg("memory-encryption=sev0");
 
-        let img_ver = self.image.info.version_tuple().unwrap_or_default();
-        let support_mr_config_id = img_ver >= (0, 5, 2);
-        // TDX 机密计算支持
-        let tdx_object = if cfg.use_mrconfigid && support_mr_config_id {
-            let app_compose = workdir.app_compose().context("Failed to get app compose")?;
-            let compose_hash = workdir
-                .app_compose_hash()
-                .context("Failed to get compose hash")?;
-            let mr_config = if app_compose.key_provider_id.is_empty() {
-                MrConfig::V1 {
-                    compose_hash: &compose_hash,
-                }
-            } else {
-                let instance_info = workdir
-                    .instance_info()
-                    .context("Failed to get instance info")?;
-                let app_id = if instance_info.app_id.is_empty() {
-                    &compose_hash[..20]
-                } else {
-                    &instance_info.app_id
-                };
-
-                let key_provider = app_compose.key_provider();
-                let key_provider_id = &app_compose.key_provider_id;
-                MrConfig::V2 {
-                    compose_hash: &compose_hash,
-                    app_id: &app_id.try_into().context("Invalid app ID")?,
-                    key_provider,
-                    key_provider_id,
-                }
-            };
-            let mrconfigid = BASE64_STANDARD.encode(mr_config.to_mr_config_id());
-            //format!("tdx-guest,id=tdx,mrconfigid={mrconfigid}")
-            format!("")
-        } else {
-            "tdx-guest,id=tdx".to_string()
-            //"".to_string()
-        };
-        //command.arg("-object").arg(tdx_object);
-
+        // CSV 模式下也需要 vhost-vsock-pci 设备用于主机通信
         command
             .arg("-device")
             .arg(format!("vhost-vsock-pci,guest-cid={}", self.cid));
@@ -389,129 +350,14 @@ impl VmConfig {
             "local,path={},mount_tag=host-shared,readonly={ro},security_model=mapped,id=virtfs0",
             shared_dir.display(),
         ));
-
-        let hugepages = self.manifest.hugepages;
-        let pin_numa = self.manifest.pin_numa;
-        // Handle GPU configuration
-        let mut dev_num = 1;
-        let memory = self.manifest.memory;
-        // 大页内存 + NUMA 优化
-        // Handle hugepages configuration
-        if hugepages && !gpus.gpus.is_empty() {
-            // Create a map of NUMA nodes to count of GPUs on that node
-            let mut numa_nodes = HashMap::new();
-
-            for device in &gpus.gpus {
-                let node = find_numa_node(&device.slot)?;
-                *numa_nodes.entry(node).or_insert(0) += 1;
-            }
-
-            if numa_nodes.is_empty() {
-                numa_nodes.insert("0".to_string(), 0);
-            }
-
-            let n_numa = numa_nodes.len() as u32;
-
-            // Round up CPU cores and memory to multiple times of NUMA nodes
-            let vcpu_count = round_up(smp, n_numa);
-            let mem_gb = round_up(memory / 1024, n_numa);
-            let vcpu_per_node = vcpu_count / n_numa;
-            let mem_per_node = mem_gb / n_numa;
-
-            mem = mem_gb * 1024;
-            smp = vcpu_count;
-
-            let mut bus_nr = 5_u32;
-
-            // Configure NUMA nodes
-            for (ind, (node, count)) in numa_nodes.into_iter().enumerate() {
-                let ind = ind as u32;
-                let cpu_start = ind * vcpu_per_node;
-                let cpu_end = (ind + 1) * vcpu_per_node - 1;
-                command.arg("-numa").arg(format!(
-                    "node,nodeid={ind},cpus={cpu_start}-{cpu_end},memdev=mem{ind}",
-                ));
-
-                command.arg("-object").arg(format!(
-                    "memory-backend-file,id=mem{ind},size={mem_per_node}G,mem-path=/dev/hugepages,share=on,prealloc=yes,host-nodes={node},policy=bind",
-                ));
-
-                let addr = 0xa + ind;
-                command.arg("-device").arg(format!(
-                    "pxb-pcie,id=pcie.node{node},bus=pcie.0,addr={addr},numa_node={ind},bus_nr={bus_nr}",
-                ));
-                bus_nr += count + 1;
-            }
-        }
-        // GPU 直通配置
-        // Configure GPU devices
-        if !gpus.gpus.is_empty() {
-            // Add iommufd object
-            command.arg("-object").arg("iommufd,id=iommufd0");
-
-            if !hugepages {
-                // Add each GPU
-                for device in &gpus.gpus {
-                    let slot = &device.slot;
-                    command.arg("-device").arg(format!(
-                        "pcie-root-port,id=pci.{dev_num},bus=pcie.0,chassis={dev_num}",
-                    ));
-                    command.arg("-device").arg(format!(
-                        "vfio-pci,host={slot},bus=pci.{dev_num},iommufd=iommufd0",
-                    ));
-
-                    dev_num += 1;
-                }
-            } else {
-                // Add each GPU with NUMA node awareness for hugepages configuration
-                for device in &gpus.gpus {
-                    let slot = &device.slot;
-                    let node = find_numa_node(slot)?;
-                    command.arg("-device").arg(format!(
-                        "pcie-root-port,id=pci.{dev_num},bus=pcie.node{node},chassis={dev_num}",
-                    ));
-                    command.arg("-device").arg(format!(
-                        "vfio-pci,host={slot},bus=pci.{dev_num},iommufd=iommufd0",
-                    ));
-                    dev_num += 1;
-                }
-            }
-
-            // Add bridges (NVSwitches) if any
-            if !gpus.bridges.is_empty() {
-                for bridge in &gpus.bridges {
-                    let slot = &bridge.slot;
-                    command.arg("-device").arg(format!(
-                        "pcie-root-port,id=pci.{dev_num},bus=pcie.0,chassis={dev_num}",
-                    ));
-                    command.arg("-device").arg(format!(
-                        "vfio-pci,host={slot},bus=pci.{dev_num},iommufd=iommufd0",
-                    ));
-                    dev_num += 1;
-                }
-            }
-        }
         command.arg("-smp").arg(smp.to_string());
         command.arg("-m").arg(format!("{}M", mem));
 
-        // NUMA pinning if requested
-        let mut numa_cpus = None;
-        if pin_numa {
-            if !gpus.gpus.is_empty() {
-                let (_, cpus) = find_numa(Some(gpus.gpus[0].slot.clone()))?;
-                numa_cpus = Some(cpus);
-            } else {
-                // Default to NUMA node 0 if no GPUs
-                let (_, cpus) = find_numa(None)?;
-                numa_cpus = Some(cpus);
-            }
-        }
-
-        // Add kernel command line
+        //Add kernel command line
         if let Some(cmdline) = &self.image.info.cmdline {
             command.arg("-append").arg(cmdline);
         }
-
+        
         let args = command
             .get_args()
             .map(|arg| arg.to_string_lossy().to_string())
@@ -526,11 +372,6 @@ impl VmConfig {
         let mut cmd_args = vec![];
         cmd_args.push(qemu.to_string_lossy().to_string());
         cmd_args.extend(args);
-
-        // If we have NUMA pinning, we'll need to wrap the command with taskset
-        if let Some(cpus) = numa_cpus {
-            cmd_args.splice(0..0, ["taskset", "-c", &cpus].into_iter().map(|s| s.into()));
-        }
 
         if !cfg.user.is_empty() {
             cmd_args.splice(
@@ -559,6 +400,9 @@ impl VmConfig {
         Ok(process_config)
     }
 }
+
+
+
 
 /// Round up a value to the nearest multiple of another value.
 /// If the value is already a multiple, it remains unchanged.

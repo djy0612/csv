@@ -9,6 +9,7 @@ license.workspace = true
 anyhow.workspace = true
 fs-err.workspace = true
 hex.workspace = true
+log.workspace = true
 scale.workspace = true
 serde.workspace = true
 serde-human-bytes.workspace = true
